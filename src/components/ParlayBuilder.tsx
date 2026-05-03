@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { PlayerProp, GameData, WNBAGameData } from '../services/api';
+import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 
 interface ParlayLeg {
   prop: PlayerProp;
@@ -17,14 +17,14 @@ interface Parlay {
   confidence: number;
   label: string;
   edgeSummary: string;
-  sport: 'mlb' | 'wnba';
+  sport: Sport;
   tier: 'S' | 'A' | 'B';
 }
 
 interface ParlayBuilderProps {
   props: PlayerProp[];
   games: (GameData | WNBAGameData)[];
-  sport: 'mlb' | 'wnba';
+  sport: Sport;
 }
 
 // ─── PARK FACTORS ────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ function scoreLeg(
   prop: PlayerProp,
   pick: 'over' | 'under',
   games: (GameData | WNBAGameData)[],
-  sport: 'mlb' | 'wnba'
+  sport: Sport
 ): { confidence: number; reason: string; edgeFlags: string[] } {
   const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
   if (odds === 0) return { confidence: 0, reason: 'no odds', edgeFlags: [] };
@@ -290,7 +290,7 @@ function scoreLeg(
 function buildAllParlays(
   props: PlayerProp[],
   games: (GameData | WNBAGameData)[],
-  sport: 'mlb' | 'wnba'
+  sport: Sport
 ): Parlay[] {
   if (props.length === 0) return [];
 

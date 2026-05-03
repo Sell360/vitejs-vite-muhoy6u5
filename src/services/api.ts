@@ -1,3 +1,5 @@
+export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc';
+
 export interface GameData {
   id: string;
   homeTeam: string;
@@ -23,6 +25,9 @@ export interface PlayerProp {
   underOdds: number;
   gameId: string;
   vendor?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  startTime?: string;
 }
 
 export interface WNBAGameData {
@@ -40,6 +45,16 @@ export interface WNBAGameData {
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const WX_KEY = import.meta.env.VITE_WEATHER_API_KEY || '';
+
+const ESPN_PATHS: Record<Sport, string> = {
+  mlb:  'baseball/mlb',
+  wnba: 'basketball/wnba',
+  nba:  'basketball/nba',
+  nfl:  'football/nfl',
+  nhl:  'hockey/nhl',
+  ufc:  'mma/ufc',
+};
+
 const PROP_LABEL_MAP: Record<string, string> = {
   batter_hits: 'Hits',
   batter_total_bases: 'Total Bases',
@@ -52,71 +67,82 @@ const PROP_LABEL_MAP: Record<string, string> = {
   player_assists: 'Assists',
   player_threes: '3-Pointers',
   player_points_rebounds_assists: 'Pts+Reb+Ast',
+  player_steals: 'Steals',
+  player_blocks: 'Blocks',
+  player_pass_yds: 'Pass Yards',
+  player_rush_yds: 'Rush Yards',
+  player_reception_yds: 'Rec Yards',
+  player_receptions: 'Receptions',
+  player_pass_tds: 'Pass TDs',
+  player_rush_attempts: 'Rush Attempts',
+  player_shots_on_goal: 'Shots on Goal',
+  player_saves: 'Saves',
+  player_goals: 'Goals',
+  player_method_of_victory: 'Method of Victory',
+  player_round: 'Round',
+  player_total_rounds: 'Total Rounds',
 };
 
 class ApiService {
 
-  async getMLBGames(date: string): Promise<GameData[]> {
-    const d = date.replace(/-/g, '');
-    const res = await fetch(`${ESPN}/baseball/mlb/scoreboard?dates=${d}&limit=20`);
-    if (!res.ok) throw new Error(`ESPN MLB ${res.status}`);
-    const data = await res.json();
-    const games = this.transformESPNMLB(data.events || []);
-    if (games.length === 0) throw new Error('No MLB games today');
-    const enriched = await Promise.all(games.map(async g => {
-      if (!g.venue) return g;
-      const wx = await this.getWeather(g.venue);
-      return wx ? { ...g, weather: wx } : g;
-    }));
-    return enriched;
+  async getGames(sport: Sport, date: string): Promise<(GameData | WNBAGameData)[]> {
+    const path = ESPN_PATHS[sport];
+    if (!path) return [];
+    try {
+      const d = date.replace(/-/g, '');
+      const res = await fetch(`${ESPN}/${path}/scoreboard?dates=${d}&limit=20`);
+      if (!res.ok) throw new Error(`ESPN ${sport} ${res.status}`);
+      const data = await res.json();
+      const events = data.events || [];
+      if (events.length === 0) throw new Error(`No ${sport} games today`);
+      const games = this.transformESPNEvents(events);
+      if (sport === 'mlb') {
+        return Promise.all(games.map(async g => {
+          const wx = await this.getWeather(g.venue);
+          return wx ? { ...g, weather: wx } : g;
+        }));
+      }
+      return games;
+    } catch (err) {
+      console.warn(`${sport} games failed:`, err);
+      return [];
+    }
   }
 
-  async getWNBAGames(date: string): Promise<WNBAGameData[]> {
-    const d = date.replace(/-/g, '');
-    const res = await fetch(`${ESPN}/basketball/wnba/scoreboard?dates=${d}&limit=20`);
-    if (!res.ok) throw new Error(`ESPN WNBA ${res.status}`);
-    const data = await res.json();
-    const games = this.transformESPNWNBA(data.events || []);
-    if (games.length === 0) throw new Error('No WNBA games today');
-    return games;
+  // Keep old methods for compatibility
+  async getMLBGames(date: string) { return this.getGames('mlb', date) as Promise<GameData[]>; }
+  async getWNBAGames(date: string) { return this.getGames('wnba', date) as Promise<WNBAGameData[]>; }
+
+  async getAllProps(sport: Sport): Promise<PlayerProp[]> {
+    try {
+      const res = await fetch(`/api/props?sport=${sport}`);
+      if (!res.ok) throw new Error(`Props function ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) return [];
+      return data.map((p: any) => ({
+        ...p,
+        propType: PROP_LABEL_MAP[p.propType] || p.propType,
+      }));
+    } catch (err) {
+      console.warn(`Props failed for ${sport}:`, err);
+      return [];
+    }
   }
 
-  async getAllMLBProps(_games: GameData[]): Promise<PlayerProp[]> {
-    return this.fetchPropsFromFunction('mlb');
-  }
+  async getAllMLBProps(_games: GameData[]) { return this.getAllProps('mlb'); }
+  async getAllWNBAProps(_games: WNBAGameData[]) { return this.getAllProps('wnba'); }
+  async getMLBPlayerProps(_id: string) { return this.getAllProps('mlb'); }
+  async getWNBAPlayerProps(_id: string) { return this.getAllProps('wnba'); }
 
-  async getAllWNBAProps(_games: WNBAGameData[]): Promise<PlayerProp[]> {
-    return this.fetchPropsFromFunction('wnba');
-  }
-
-  async getMLBPlayerProps(_gameId: string): Promise<PlayerProp[]> {
-    return this.fetchPropsFromFunction('mlb');
-  }
-
-  async getWNBAPlayerProps(_gameId: string): Promise<PlayerProp[]> {
-    return this.fetchPropsFromFunction('wnba');
-  }
-
-  private async fetchPropsFromFunction(sport: 'mlb' | 'wnba'): Promise<PlayerProp[]> {
-    const res = await fetch(`/api/props?sport=${sport}`);
-    if (!res.ok) throw new Error(`Props function error ${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data)) throw new Error('Invalid props response');
-    return data.map((p: any) => ({
-      ...p,
-      propType: PROP_LABEL_MAP[p.propType] || p.propType,
-    }));
-  }
-
-  private transformESPNMLB(events: any[]): GameData[] {
+  private transformESPNEvents(events: any[]): GameData[] {
     return events.map(event => {
       const comp = event.competitions?.[0];
       const home = comp?.competitors?.find((c: any) => c.homeAway === 'home');
       const away = comp?.competitors?.find((c: any) => c.homeAway === 'away');
       return {
         id: event.id,
-        homeTeam: home?.team?.abbreviation || 'TBD',
-        awayTeam: away?.team?.abbreviation || 'TBD',
+        homeTeam: home?.team?.abbreviation || home?.team?.shortDisplayName || 'TBD',
+        awayTeam: away?.team?.abbreviation || away?.team?.shortDisplayName || 'TBD',
         startTime: event.date || new Date().toISOString(),
         venue: comp?.venue?.fullName || '',
         status: this.mapESPNStatus(event.status?.type?.name || ''),
@@ -127,27 +153,9 @@ class ApiService {
     });
   }
 
-  private transformESPNWNBA(events: any[]): WNBAGameData[] {
-    return events.map(event => {
-      const comp = event.competitions?.[0];
-      const home = comp?.competitors?.find((c: any) => c.homeAway === 'home');
-      const away = comp?.competitors?.find((c: any) => c.homeAway === 'away');
-      return {
-        id: event.id,
-        homeTeam: home?.team?.shortDisplayName || home?.team?.abbreviation || 'TBD',
-        awayTeam: away?.team?.shortDisplayName || away?.team?.abbreviation || 'TBD',
-        startTime: event.date || new Date().toISOString(),
-        venue: comp?.venue?.fullName || '',
-        status: this.mapESPNStatus(event.status?.type?.name || ''),
-        homeScore: home?.score ? parseInt(home.score) : undefined,
-        awayScore: away?.score ? parseInt(away.score) : undefined,
-      };
-    });
-  }
-
   private mapESPNStatus(s: string): 'scheduled' | 'live' | 'final' {
     if (s.includes('FINAL') || s.includes('COMPLETE')) return 'final';
-    if (s.includes('IN_PROGRESS') || s.includes('HALFTIME')) return 'live';
+    if (s.includes('IN_PROGRESS') || s.includes('HALFTIME') || s.includes('PROGRESS')) return 'live';
     return 'scheduled';
   }
 

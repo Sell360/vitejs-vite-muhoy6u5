@@ -12,22 +12,29 @@ exports.handler = async (event) => {
   const ODDS_KEY = process.env.VITE_ODDS_API_KEY || 'cb3a34037735e0ceb317b24195526606';
 
   const sportMap = {
-    mlb: 'baseball_mlb',
+    mlb:  'baseball_mlb',
     wnba: 'basketball_wnba',
+    nba:  'basketball_nba',
+    nfl:  'americanfootball_nfl',
+    nhl:  'icehockey_nhl',
+    ufc:  'mma_mixed_martial_arts',
   };
 
   const marketMap = {
-    mlb: 'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs,batter_walks',
+    mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs,batter_walks',
     wnba: 'player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists',
+    nba:  'player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists,player_steals,player_blocks',
+    nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions,player_pass_tds,player_rush_attempts',
+    nhl:  'player_shots_on_goal,player_saves,player_points,player_goals,player_assists',
+    ufc:  'player_method_of_victory,player_round,player_total_rounds',
   };
 
   const oddsSport = sportMap[sport];
   if (!oddsSport) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid sport' }) };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
   }
 
   try {
-    // Step 1: get events for today
     const eventsRes = await fetch(
       `https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`
     );
@@ -38,9 +45,20 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify([]) };
     }
 
-    // Step 2: get props for each event in parallel
+    // Only fetch props for upcoming/live events (not completed)
+    const activeEvents = events.filter(e => {
+      const start = new Date(e.commence_time).getTime();
+      const now = Date.now();
+      const threeHoursAgo = now - 3 * 60 * 60 * 1000;
+      return start > threeHoursAgo;
+    });
+
+    if (activeEvents.length === 0) {
+      return { statusCode: 200, headers, body: JSON.stringify([]) };
+    }
+
     const propResults = await Promise.allSettled(
-      events.map(e =>
+      activeEvents.map(e =>
         fetch(
           `https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${e.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${marketMap[sport]}&oddsFormat=american`
         ).then(r => r.ok ? r.json() : null)
@@ -52,12 +70,14 @@ exports.handler = async (event) => {
     propResults.forEach((result, i) => {
       if (result.status !== 'fulfilled' || !result.value) return;
       const data = result.value;
-      const eventId = events[i]?.id;
-      const homeTeam = events[i]?.home_team;
-      const awayTeam = events[i]?.away_team;
+      const eventId = activeEvents[i]?.id;
+      const homeTeam = activeEvents[i]?.home_team;
+      const awayTeam = activeEvents[i]?.away_team;
+      const startTime = activeEvents[i]?.commence_time;
 
       const bookmaker = data.bookmakers?.find(b => b.key === 'draftkings')
         || data.bookmakers?.find(b => b.key === 'fanduel')
+        || data.bookmakers?.find(b => b.key === 'betmgm')
         || data.bookmakers?.[0];
       if (!bookmaker) return;
 
@@ -80,6 +100,7 @@ exports.handler = async (event) => {
               vendor: bookmaker.key,
               homeTeam,
               awayTeam,
+              startTime,
             });
           }
           const p = playerMap.get(name);
