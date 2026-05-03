@@ -1,10 +1,6 @@
-// Netlify serverless function — proxies DraftKings sportsbook API
-// No auth required on DraftKings side, CORS handled here
-
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
     'Content-Type': 'application/json',
   };
 
@@ -12,71 +8,91 @@ exports.handler = async (event) => {
     return { statusCode: 200, headers, body: '' };
   }
 
-  const { sport, type } = event.queryStringParameters || {};
+  const { sport } = event.queryStringParameters || {};
+  const ODDS_KEY = process.env.VITE_ODDS_API_KEY || 'cb3a34037735e0ceb317b24195526606';
 
-  // DraftKings sport/league IDs
-  // These are the eventgroup IDs for each sport's player props section
-  const SPORT_IDS = {
-    mlb:  '84240',   // MLB
-    wnba: '42648',   // WNBA
+  const sportMap = {
+    mlb: 'baseball_mlb',
+    wnba: 'basketball_wnba',
   };
 
-  // Player prop category IDs per sport
-  const PROP_CATEGORIES = {
-    mlb:  '1189',    // Batter/Pitcher Props
-    wnba: '1215',    // Player Props
+  const marketMap = {
+    mlb: 'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs,batter_walks',
+    wnba: 'player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists',
   };
 
-  const sportId = SPORT_IDS[sport];
-  const categoryId = PROP_CATEGORIES[sport];
-
-  if (!sportId) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: `Unknown sport: ${sport}` }),
-    };
+  const oddsSport = sportMap[sport];
+  if (!oddsSport) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid sport' }) };
   }
 
   try {
-    let url;
+    // Step 1: get events for today
+    const eventsRes = await fetch(
+      `https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`
+    );
+    if (!eventsRes.ok) throw new Error(`Events API ${eventsRes.status}`);
+    const events = await eventsRes.json();
 
-    if (type === 'categories') {
-      // Step 1: Get all categories to find prop subcategory IDs
-      url = `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${sportId}?format=json`;
-    } else if (type === 'props') {
-      // Step 2: Get actual player props for the category
-      url = `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${sportId}/categories/${categoryId}?format=json`;
-    } else {
-      // Default: get everything in one shot
-      url = `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${sportId}/categories/${categoryId}?format=json`;
+    if (!Array.isArray(events) || events.length === 0) {
+      return { statusCode: 200, headers, body: JSON.stringify([]) };
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://sportsbook.draftkings.com/',
-      },
+    // Step 2: get props for each event in parallel
+    const propResults = await Promise.allSettled(
+      events.map(e =>
+        fetch(
+          `https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${e.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${marketMap[sport]}&oddsFormat=american`
+        ).then(r => r.ok ? r.json() : null)
+      )
+    );
+
+    const allProps = [];
+
+    propResults.forEach((result, i) => {
+      if (result.status !== 'fulfilled' || !result.value) return;
+      const data = result.value;
+      const eventId = events[i]?.id;
+      const homeTeam = events[i]?.home_team;
+      const awayTeam = events[i]?.away_team;
+
+      const bookmaker = data.bookmakers?.find(b => b.key === 'draftkings')
+        || data.bookmakers?.find(b => b.key === 'fanduel')
+        || data.bookmakers?.[0];
+      if (!bookmaker) return;
+
+      bookmaker.markets?.forEach(market => {
+        const playerMap = new Map();
+        market.outcomes?.forEach(outcome => {
+          const name = outcome.description;
+          if (!name) return;
+          if (!playerMap.has(name)) {
+            playerMap.set(name, {
+              id: `${eventId}-${market.key}-${name}`,
+              playerId: '',
+              playerName: name,
+              team: outcome.team || '',
+              propType: market.key,
+              line: outcome.point ?? 0,
+              overOdds: -110,
+              underOdds: -110,
+              gameId: eventId,
+              vendor: bookmaker.key,
+              homeTeam,
+              awayTeam,
+            });
+          }
+          const p = playerMap.get(name);
+          if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
+          if (outcome.name === 'Under') p.underOdds = outcome.price;
+        });
+        playerMap.forEach(p => { if (p.playerName) allProps.push(p); });
+      });
     });
 
-    if (!response.ok) {
-      throw new Error(`DraftKings returned ${response.status}`);
-    }
+    return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
-    const data = await response.json();
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify(data),
-    };
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: err.message }),
-    };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
