@@ -1,3 +1,5 @@
+const https = require('https');
+
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -8,48 +10,41 @@ exports.handler = async (event) => {
   const { sport } = event.queryStringParameters || {};
 
   const DK_GROUPS = {
-    mlb:  '84240',
-    nba:  '42648',
-    nfl:  '88808',
-    nhl:  '42133',
-    wnba: '42648',
-    ufc:  '9',
+    mlb: '84240', nba: '42648', nfl: '88808',
+    nhl: '42133', wnba: '42648', ufc: '9',
   };
 
   const groupId = DK_GROUPS[sport];
   if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
-  // Use multiple CORS proxy services as fallback chain
-  const PROXIES = [
-    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url) => url, // direct as last resort
-  ];
-
-  const DK_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Referer': 'https://sportsbook.draftkings.com/',
-  };
-
-  const fetchWithFallback = async (url) => {
-    for (const proxy of PROXIES) {
-      try {
-        const res = await fetch(proxy(url), { headers: DK_HEADERS });
-        if (res.ok) return res;
-      } catch { continue; }
-    }
-    throw new Error('All proxies failed');
-  };
+  const fetchDK = (url) => new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://sportsbook.draftkings.com/',
+        'Origin': 'https://sportsbook.draftkings.com',
+        'x-requested-with': 'XMLHttpRequest',
+      }
+    };
+    https.get(url, options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error(`DK ${res.statusCode}`));
+        try { resolve(JSON.parse(data)); } catch(e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
 
   try {
-    // Get categories
-    const catRes = await fetchWithFallback(
+    const catData = await fetchDK(
       `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`
     );
-    const catData = await catRes.json();
 
-    const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists', 'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
+    const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists',
+      'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
     const cats = catData?.eventGroup?.offerCategories || [];
     const propCats = cats.filter(c => propKeywords.some(k => (c.name || '').toLowerCase().includes(k)));
 
@@ -65,10 +60,9 @@ exports.handler = async (event) => {
             const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
             if (!subcatId) return;
             try {
-              const res = await fetchWithFallback(
+              const data = await fetchDK(
                 `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`
               );
-              const data = await res.json();
               allProps.push(...parseDKProps(data, subcat.name || cat.name || ''));
             } catch { }
           })
@@ -127,7 +121,7 @@ function parseDKProps(data, defaultPropType) {
         });
       });
     });
-  } catch (e) { }
+  } catch(e) {}
   return props;
 }
 
