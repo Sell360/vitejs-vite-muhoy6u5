@@ -109,18 +109,56 @@ Bet responsibly.`;
         </div>
       </div>
 
-      {/* Sport tabs */}
+      {/* Sport tabs + inline analyze */}
       <div style={{ borderBottom: `1px solid ${C.border}`, background: C.surface }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px', display: 'flex', gap: '4px', overflowX: 'auto' }}>
-          {SPORTS.map(sp => (
-            <button key={sp.key} onClick={() => handleSportChange(sp.key)} style={{
-              padding: '12px 20px', background: sport === sp.key ? C.accentGlow : 'transparent',
-              color: sport === sp.key ? C.accentBright : C.muted,
-              border: 'none', borderBottom: sport === sp.key ? `2px solid ${C.accent}` : '2px solid transparent',
-              cursor: 'pointer', fontSize: '13px', fontWeight: sport === sp.key ? '600' : '400',
-              whiteSpace: 'nowrap', transition: 'all 0.15s',
-            }}>{sp.emoji} {sp.label}</button>
-          ))}
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* Sport buttons */}
+          <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', flexShrink: 0 }}>
+            {SPORTS.map(sp => (
+              <button key={sp.key} onClick={() => handleSportChange(sp.key)} style={{
+                padding: '12px 18px', background: sport === sp.key ? C.accentGlow : 'transparent',
+                color: sport === sp.key ? C.accentBright : C.muted,
+                border: 'none', borderBottom: sport === sp.key ? `2px solid ${C.accent}` : '2px solid transparent',
+                cursor: 'pointer', fontSize: '13px', fontWeight: sport === sp.key ? '600' : '400',
+                whiteSpace: 'nowrap', transition: 'all 0.15s',
+              }}>{sp.emoji} {sp.label}</button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: '1px', height: '32px', background: C.border, margin: '0 12px', flexShrink: 0 }} />
+
+          {/* Inline analyze input */}
+          <div style={{ flex: 1, display: 'flex', gap: '8px', alignItems: 'center', padding: '8px 0' }}>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && input.trim()) analyze(); }}
+              placeholder="Analyze a prop, game, or paste research..."
+              style={{
+                flex: 1, height: '36px', background: C.card, color: C.text,
+                border: `1px solid ${C.border}`, borderRadius: '8px',
+                padding: '0 14px', fontSize: '13px', outline: 'none',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button onClick={analyze} disabled={loading || !input.trim()} style={{
+              height: '36px', padding: '0 18px', flexShrink: 0,
+              background: loading || !input.trim() ? C.surface : C.accent,
+              color: loading || !input.trim() ? C.muted : 'white',
+              border: `1px solid ${loading || !input.trim() ? C.border : C.accent}`,
+              borderRadius: '8px', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+              fontSize: '13px', fontWeight: '600', whiteSpace: 'nowrap',
+            }}>{loading ? '...' : 'Analyze'}</button>
+            {messages.length > 0 && (
+              <button onClick={() => { setMessages([]); setInput(''); }} style={{
+                height: '36px', padding: '0 12px', flexShrink: 0,
+                background: 'transparent', color: C.muted,
+                border: `1px solid ${C.border}`, borderRadius: '8px',
+                cursor: 'pointer', fontSize: '13px',
+              }}>Clear</button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -141,55 +179,25 @@ Bet responsibly.`;
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px' }}>
 
-        {/* TOP — Analysis box spanning full width */}
-        <div style={{ marginBottom: '24px', background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '600', color: C.muted, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>Analysis Engine</div>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Select a game or prop to analyze, or type your own research..."
-            style={{
-              width: '100%', height: '100px', background: C.surface, color: C.text,
-              border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px',
-              fontSize: '14px', resize: 'none', outline: 'none',
-              boxSizing: 'border-box', fontFamily: 'inherit',
-            }}
-          />
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <button onClick={analyze} disabled={loading || !input.trim()} style={{
-              padding: '9px 24px',
-              background: loading || !input.trim() ? C.surface : C.accent,
-              color: loading || !input.trim() ? C.muted : 'white',
-              border: `1px solid ${loading || !input.trim() ? C.border : C.accent}`,
-              borderRadius: '8px', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-              fontSize: '14px', fontWeight: '600',
-            }}>{loading ? 'Analyzing...' : 'Analyze'}</button>
-            <button onClick={() => { setMessages([]); setInput(''); }} style={{
-              padding: '9px 16px', background: 'transparent', color: C.muted,
-              border: `1px solid ${C.border}`, borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
-            }}>Clear</button>
-          </div>
-
-          {/* Chat messages inside analysis box */}
-          {messages.length > 0 && (
-            <div style={{ marginTop: '16px', maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {messages.map((m, i) => (
-                <div key={i} style={{
-                  padding: '14px 16px', background: m.role === 'user' ? C.surface : C.bg,
-                  border: `1px solid ${m.role === 'assistant' ? C.accent + '40' : C.border}`,
-                  borderLeft: m.role === 'assistant' ? `3px solid ${C.accent}` : undefined,
-                  borderRadius: '10px', whiteSpace: 'pre-wrap', fontSize: '13px', lineHeight: '1.6',
-                }}>
-                  <div style={{ fontSize: '10px', color: C.muted, marginBottom: '6px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    {m.role === 'user' ? 'You' : '⚡ BET360'}
-                  </div>
-                  {m.content}
+        {/* Chat messages — shown above content if any */}
+        {messages.length > 0 && (
+          <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '250px', overflowY: 'auto' }}>
+            {messages.map((m, i) => (
+              <div key={i} style={{
+                padding: '14px 16px', background: m.role === 'user' ? C.card : C.surface,
+                border: `1px solid ${m.role === 'assistant' ? C.accent + '40' : C.border}`,
+                borderLeft: m.role === 'assistant' ? `3px solid ${C.accent}` : undefined,
+                borderRadius: '10px', whiteSpace: 'pre-wrap', fontSize: '13px', lineHeight: '1.6',
+              }}>
+                <div style={{ fontSize: '10px', color: C.muted, marginBottom: '6px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                  {m.role === 'user' ? 'You' : '⚡ BET360'}
                 </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-          )}
-        </div>
+                {m.content}
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
 
         {/* BOTTOM — Games left, Parlays/Props right */}
         <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '24px', alignItems: 'start' }}>
