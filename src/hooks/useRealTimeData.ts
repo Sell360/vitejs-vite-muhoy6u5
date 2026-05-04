@@ -37,28 +37,23 @@ export function useRealTimeData(sport: Sport): UseRealTimeDataReturn {
       const gamesData = await apiService.getGames(sport, today);
       setGames(gamesData);
       setLastUpdated(new Date());
-
-      // Load props in background
-      setPropsLoading(true);
-      try {
-        const p = await apiService.getAllProps(sport);
-        if (p.length === 0) {
-          setPropsError(`PrizePicks returned 0 props for ${sport.toUpperCase()}. They may not have lines posted yet today.`);
-        }
-        setAllProps(p);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setPropsError(`Props failed: ${msg}`);
-        console.error('Props error:', err);
-      } finally {
-        setPropsLoading(false);
-      }
-
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Games failed: ${msg}`);
+      setError(err instanceof Error ? err.message : 'Failed to fetch games');
     } finally {
       setLoading(false);
+    }
+
+    // Load props separately — never block games from showing
+    setPropsLoading(true);
+    try {
+      const p = await apiService.getAllProps(sport);
+      setAllProps(p);
+      if (p.length === 0) setPropsError('No props available from DraftKings right now. Try refreshing.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setPropsError(`Props unavailable: ${msg}`);
+    } finally {
+      setPropsLoading(false);
     }
   }, [sport]);
 
@@ -72,7 +67,7 @@ export function useRealTimeData(sport: Sport): UseRealTimeDataReturn {
         return [...prev, ...all.filter(x => !existing.has(x.id))];
       });
     } catch (err) {
-      console.error('fetchPropsForGame error:', err);
+      console.warn('fetchPropsForGame failed:', err);
     }
   }, [sport]);
 
