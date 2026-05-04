@@ -77,15 +77,53 @@ export default function Betz360() {
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
       {/* Header */}
-      <div style={{ borderBottom: `1px solid ${C.border}`, background: `linear-gradient(180deg, #0a0f1e 0%, ${C.bg} 100%)`, padding: '0 16px' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '56px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `linear-gradient(135deg, ${C.accent}, #1d4ed8)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '800', color: 'white' }}>B</div>
-            <div style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '-0.5px' }}>BET<span style={{ color: C.accentBright }}>360</span></div>
+      <div style={{ borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(180deg, #050d1f 0%, #050810 100%)', padding: '0 16px', position: 'relative', overflow: 'hidden' }}>
+        {/* Background glow effects */}
+        <div style={{ position: 'absolute', top: '-20px', left: '60px', width: '120px', height: '80px', background: 'radial-gradient(ellipse, rgba(59,130,246,0.3) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: '-10px', left: '20px', width: '60px', height: '60px', background: 'radial-gradient(ellipse, rgba(99,102,241,0.2) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* Logo mark */}
+            <div style={{
+              width: '42px', height: '42px', borderRadius: '10px', flexShrink: 0,
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 50%, #6366f1 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 24px rgba(59,130,246,0.5), 0 0 48px rgba(59,130,246,0.2)',
+              border: '1px solid rgba(99,130,246,0.4)',
+              position: 'relative',
+            }}>
+              <div style={{ fontSize: '20px', fontWeight: '900', color: 'white', letterSpacing: '-1px', lineHeight: 1 }}>B</div>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '10px', background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%)' }} />
+            </div>
+
+            {/* Wordmark */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0px', lineHeight: 1 }}>
+                <span style={{
+                  fontSize: '26px', fontWeight: '900', letterSpacing: '-1.5px',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #93c5fd 100%)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                }}>BETZ</span>
+                <span style={{
+                  fontSize: '26px', fontWeight: '900', letterSpacing: '-1.5px',
+                  background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #6366f1 100%)',
+                  WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                  textShadow: 'none',
+                }}>360</span>
+              </div>
+              <div style={{ fontSize: '9px', color: '#475569', letterSpacing: '3px', textTransform: 'uppercase', marginTop: '1px', fontWeight: '600' }}>PROP INTELLIGENCE</div>
+            </div>
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {lastUpdated && <div style={{ fontSize: '11px', color: C.muted, display: 'none' }} className="desktop-only">Updated {lastUpdated.toLocaleTimeString()}</div>}
-            <button onClick={refreshData} style={{ padding: '5px 10px', background: C.card, color: C.muted, border: `1px solid ${C.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🔄</button>
+            {lastUpdated && <div style={{ fontSize: '11px', color: C.muted }}>Updated {lastUpdated.toLocaleTimeString()}</div>}
+            <button onClick={refreshData} style={{
+              padding: '6px 12px', background: 'rgba(255,255,255,0.05)',
+              color: C.muted, border: `1px solid ${C.border}`,
+              borderRadius: '6px', cursor: 'pointer', fontSize: '12px',
+              backdropFilter: 'blur(4px)',
+            }}>🔄</button>
           </div>
         </div>
       </div>
