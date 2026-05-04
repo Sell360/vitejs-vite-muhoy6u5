@@ -27,7 +27,7 @@ export default function PropDesk() {
   const {
     games, props, allProps,
     loading: dataLoading,
-    propsLoading,
+    propsLoading, propsError,
     error: dataError,
     refreshData,
     fetchPropsForGame,
@@ -136,6 +136,11 @@ Bet responsibly.`;
         )}
         {!propsLoading && allProps.length === 0 && games.length > 0 && (
           <div style={{ color: "#f87171" }}>⚠️ No props available yet for today's {sport.toUpperCase()} games</div>
+        )}
+        {propsError && (
+          <div style={{ color: "#f87171", background: "#1e2a44", padding: "8px 12px", borderRadius: "4px", marginTop: "6px", fontSize: "12px" }}>
+            🔴 {propsError}
+          </div>
         )}
       </div>
 
