@@ -265,11 +265,45 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
       if (name === 'sharp') pool = allLegs.filter(l => l.prop.sharpFlag === true);
       if (attempt === 1) pool = pool.slice(Math.floor(pool.length * 0.3));
 
-      const used = new Set<string>();
+      const usedPlayers = new Set<string>();
+      const usedTeams = new Set<string>();
+      const usedGames = new Set<string>();
       const legs: ParlayLeg[] = [];
+
       for (const leg of pool) {
-        const key = `${leg.prop.playerName}-${leg.prop.propType}`;
-        if (!used.has(key) && legs.length < size) { used.add(key); legs.push(leg); }
+        if (legs.length >= size) break;
+        const playerKey = `${leg.prop.playerName}-${leg.prop.propType}`;
+        const team = leg.prop.team || '';
+        const gameId = leg.prop.gameId || '';
+
+        // Skip: duplicate player, same team already used, same game already used (unless we need to fill)
+        if (usedPlayers.has(playerKey)) continue;
+        if (team && usedTeams.has(team)) continue;
+        // Allow max 1 leg per game to avoid correlated same-game parlays
+        if (gameId && usedGames.has(gameId) && legs.length < size) continue;
+
+        usedPlayers.add(playerKey);
+        if (team) usedTeams.add(team);
+        if (gameId) usedGames.add(gameId);
+        legs.push(leg);
+      }
+
+      // If strict rules left us short, relax same-game rule only
+      if (legs.length < size) {
+        const usedPlayers2 = new Set<string>();
+        const usedTeams2 = new Set<string>();
+        const legs2: ParlayLeg[] = [];
+        for (const leg of pool) {
+          if (legs2.length >= size) break;
+          const playerKey = `${leg.prop.playerName}-${leg.prop.propType}`;
+          const team = leg.prop.team || '';
+          if (usedPlayers2.has(playerKey)) continue;
+          if (team && usedTeams2.has(team)) continue;
+          usedPlayers2.add(playerKey);
+          if (team) usedTeams2.add(team);
+          legs2.push(leg);
+        }
+        if (legs2.length > legs.length) legs.splice(0, legs.length, ...legs2);
       }
       if (legs.length < size) continue;
 
