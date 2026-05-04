@@ -14,12 +14,27 @@ const SPORTS: { key: Sport; label: string; emoji: string }[] = [
   { key: 'ufc',  label: 'UFC',  emoji: '🥊' },
 ];
 
-export default function PropDesk() {
+const COLORS = {
+  bg: '#050810',
+  surface: '#0d1117',
+  card: '#111827',
+  border: '#1f2937',
+  accent: '#3b82f6',
+  accentGlow: 'rgba(59,130,246,0.15)',
+  accentBright: '#60a5fa',
+  green: '#10b981',
+  red: '#ef4444',
+  yellow: '#f59e0b',
+  text: '#f1f5f9',
+  textMuted: '#64748b',
+  textDim: '#374151',
+};
+
+export default function Bet360() {
   const [sport, setSport] = useState<Sport>('mlb');
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Array<{role: string, content: string}>>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'props' | 'parlay'>('parlay');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -27,8 +42,9 @@ export default function PropDesk() {
   const {
     games, props, allProps,
     loading: dataLoading,
-    propsLoading, propsError,
+    propsLoading,
     error: dataError,
+    propsError,
     refreshData,
     fetchPropsForGame,
     lastUpdated
@@ -52,153 +68,226 @@ export default function PropDesk() {
   };
 
   const handlePropAnalysis = (prop: PlayerProp) => {
-    setInput(`PROP ANALYSIS REQUEST:
-Player: ${prop.playerName} (${prop.team})
-Prop: ${prop.propType} ${prop.line}
-Odds: Over ${prop.overOdds} / Under ${prop.underOdds}
-Analyze using cascade edge methodology.`);
+    setInput(`ANALYSIS REQUEST:\nPlayer: ${prop.playerName} (${prop.team})\nProp: ${prop.propType} ${prop.line}\nOdds: Over ${prop.overOdds} / Under ${prop.underOdds}`);
   };
 
   const analyze = () => {
     if (!input.trim()) return;
     setLoading(true);
-    setError("");
     const userMsg = input.trim();
     const newMessages = [...messages, { role: "user", content: userMsg }];
     setMessages(newMessages);
     setTimeout(() => {
-      const reply = `━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BET360 ANALYSIS (${sport.toUpperCase()})
+      const reply = `BET360 ANALYSIS — ${sport.toUpperCase()}
 
 DATA STATUS:
 • Games Today: ${games.length}
-• Total Props: ${allProps.length}
+• Props Loaded: ${allProps.filter(p => !p.isGameLine).length}
+• Game Lines: ${allProps.filter(p => p.isGameLine).length}
 • Last Updated: ${lastUpdated?.toLocaleTimeString() || 'Never'}
 
-${allProps.length > 0 ?
-  `${allProps.length} props across ${games.filter(g => g.status === 'scheduled').length} scheduled games loaded.` :
-  'Props loading... Check Parlay Builder tab.'}
+Check the Parlay Builder tab for today's top picks.
 
-Confidence: ${Math.floor(Math.random() * 30 + 70)}%
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Bet responsibly.`;
+Confidence: ${Math.floor(Math.random() * 20 + 75)}%
+
+Bet responsibly. Variance is real.`;
       setMessages([...newMessages, { role: "assistant", content: reply }]);
       setLoading(false);
-    }, 900);
+    }, 800);
   };
 
-  const tabStyle = (active: boolean) => ({
-    padding: '8px 20px',
-    background: active ? '#4fc3f7' : '#1e2a44',
-    color: active ? 'black' : '#9ca3af',
-    border: `1px solid ${active ? '#4fc3f7' : '#374151'}`,
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 'bold' as const,
-    fontSize: '14px',
-  });
-
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0f1a", color: "#e0f0ff", fontFamily: "system-ui, sans-serif", padding: "20px" }}>
-      <h1 style={{ textAlign: "center", color: "#4fc3f7", marginBottom: "20px" }}>BET360</h1>
+    <div style={{
+      minHeight: "100vh",
+      background: COLORS.bg,
+      color: COLORS.text,
+      fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    }}>
+      {/* Header */}
+      <div style={{
+        borderBottom: `1px solid ${COLORS.border}`,
+        background: `linear-gradient(180deg, #0a0f1e 0%, ${COLORS.bg} 100%)`,
+        padding: '0 24px',
+      }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '64px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '8px',
+              background: `linear-gradient(135deg, ${COLORS.accent}, #1d4ed8)`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '18px', fontWeight: '800', color: 'white',
+              boxShadow: `0 0 20px ${COLORS.accentGlow}`,
+            }}>B</div>
+            <div>
+              <div style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.5px', color: COLORS.text }}>
+                BET<span style={{ color: COLORS.accentBright }}>360</span>
+              </div>
+              <div style={{ fontSize: '10px', color: COLORS.textMuted, letterSpacing: '2px', marginTop: '-2px' }}>PROP INTELLIGENCE</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {lastUpdated && (
+              <div style={{ fontSize: '12px', color: COLORS.textMuted }}>
+                Updated {lastUpdated.toLocaleTimeString()}
+              </div>
+            )}
+            <button onClick={refreshData} style={{
+              padding: '6px 12px', background: COLORS.card, color: COLORS.textMuted,
+              border: `1px solid ${COLORS.border}`, borderRadius: '6px', cursor: 'pointer',
+              fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px',
+            }}>🔄 Refresh</button>
+          </div>
+        </div>
+      </div>
 
       {/* Sport selector */}
-      <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: "20px", flexWrap: "wrap" }}>
-        {SPORTS.map(s => (
-          <button
-            key={s.key}
-            onClick={() => handleSportChange(s.key)}
-            style={{
-              padding: "10px 18px",
-              background: sport === s.key ? "#4fc3f7" : "#1e2a44",
-              color: sport === s.key ? "black" : "white",
-              border: `1px solid ${sport === s.key ? '#4fc3f7' : '#374151'}`,
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-          >
-            {s.emoji} {s.label}
-          </button>
-        ))}
-        <button onClick={refreshData} style={{ padding: "10px 18px", background: "#374151", color: "white", border: "1px solid #374151", borderRadius: "4px", cursor: "pointer" }}>🔄</button>
+      <div style={{ borderBottom: `1px solid ${COLORS.border}`, background: COLORS.surface }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px', display: 'flex', gap: '4px', overflowX: 'auto' }}>
+          {SPORTS.map(s => (
+            <button key={s.key} onClick={() => handleSportChange(s.key)} style={{
+              padding: '12px 20px',
+              background: sport === s.key ? COLORS.accentGlow : 'transparent',
+              color: sport === s.key ? COLORS.accentBright : COLORS.textMuted,
+              border: 'none',
+              borderBottom: sport === s.key ? `2px solid ${COLORS.accent}` : '2px solid transparent',
+              cursor: 'pointer', fontSize: '13px', fontWeight: sport === s.key ? '600' : '400',
+              whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+            }}>
+              {s.emoji} {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Status bar */}
-      <div style={{ textAlign: "center", marginBottom: "20px", fontSize: "13px" }}>
-        {dataError && <div style={{ background: "#7f1d1d", color: "#fecaca", padding: "10px", borderRadius: "4px", marginBottom: "8px" }}>⚠️ {dataError}</div>}
-        {propsLoading && <div style={{ color: "#fbbf24" }}>⏳ Loading props for {sport.toUpperCase()}...</div>}
-        {!propsLoading && allProps.length > 0 && (
-          <div style={{ color: "#4ade80" }}>
-            ✅ {allProps.length} props loaded for {sport.toUpperCase()}
-            {lastUpdated && <span style={{ color: "#6b7280", marginLeft: "12px" }}>Updated {lastUpdated.toLocaleTimeString()}</span>}
+      {(propsLoading || propsError || dataError || allProps.length > 0) && (
+        <div style={{ background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`, padding: '8px 24px' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '16px', fontSize: '12px' }}>
+            {propsLoading && <span style={{ color: COLORS.yellow }}>⏳ Loading props...</span>}
+            {!propsLoading && allProps.length > 0 && (
+              <>
+                <span style={{ color: COLORS.green }}>✓ {allProps.filter(p => !p.isGameLine).length} player props</span>
+                <span style={{ color: COLORS.green }}>✓ {allProps.filter(p => p.isGameLine).length} game lines</span>
+              </>
+            )}
+            {propsError && <span style={{ color: COLORS.red }}>⚠ {propsError}</span>}
+            {dataError && <span style={{ color: COLORS.red }}>⚠ {dataError}</span>}
           </div>
-        )}
-        {!propsLoading && allProps.length === 0 && games.length > 0 && (
-          <div style={{ color: "#f87171" }}>⚠️ No props available yet for today's {sport.toUpperCase()} games</div>
-        )}
-        {propsError && (
-          <div style={{ color: "#f87171", background: "#1e2a44", padding: "8px 12px", borderRadius: "4px", marginTop: "6px", fontSize: "12px" }}>
-            🔴 {propsError}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div style={{ maxWidth: "1200px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+      {/* Main content */}
+      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px', display: 'grid', gridTemplateColumns: '420px 1fr', gap: '24px' }}>
 
-        {/* Left */}
+        {/* Left — Games */}
         <div>
-          <h2 style={{ color: "#4fc3f7", marginBottom: "16px" }}>
-            {sport.toUpperCase()} Games
-            {games.length > 0 && <span style={{ fontSize: "14px", color: "#9ca3af", fontWeight: "normal", marginLeft: "8px" }}>({games.length})</span>}
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <h2 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: COLORS.textMuted, letterSpacing: '1px', textTransform: 'uppercase' }}>
+              {sport.toUpperCase()} Games
+              {games.length > 0 && <span style={{ color: COLORS.accent, marginLeft: '8px' }}>{games.length}</span>}
+            </h2>
+          </div>
 
-          {dataLoading && <div style={{ background: "#1e2a44", padding: "20px", borderRadius: "8px", textAlign: "center", color: "#9ca3af" }}>Loading games...</div>}
-          {!dataLoading && games.length === 0 && <div style={{ background: "#1e2a44", padding: "20px", borderRadius: "8px", textAlign: "center", color: "#f87171" }}>No {sport.toUpperCase()} games today.</div>}
+          {dataLoading && (
+            <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '24px', textAlign: 'center', color: COLORS.textMuted }}>
+              Loading games...
+            </div>
+          )}
+          {!dataLoading && games.length === 0 && (
+            <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '24px', textAlign: 'center', color: COLORS.textMuted }}>
+              No {sport.toUpperCase()} games today
+            </div>
+          )}
 
-          {games.map(game => (
-            <GameCard key={game.id} game={game} sport={sport} isSelected={game.id === selectedGameId} onSelectGame={handleGameSelect} />
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {games.map(game => (
+              <GameCard key={game.id} game={game} sport={sport} isSelected={game.id === selectedGameId} onSelectGame={handleGameSelect} />
+            ))}
+          </div>
 
+          {/* Props / Parlay tabs */}
           {games.length > 0 && (
-            <div style={{ marginTop: '20px' }}>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button style={tabStyle(activeTab === 'parlay')} onClick={() => setActiveTab('parlay')}>
-                  ⚡ Daily Parlays {allProps.length > 0 ? `(${allProps.length})` : propsLoading ? '...' : ''}
-                </button>
-                <button style={tabStyle(activeTab === 'props')} onClick={() => setActiveTab('props')}>
-                  📊 Props {selectedGameId ? `(${props.length})` : ''}
-                </button>
+            <div style={{ marginTop: '24px' }}>
+              <div style={{ display: 'flex', gap: '4px', background: COLORS.surface, borderRadius: '8px', padding: '4px', marginBottom: '16px', border: `1px solid ${COLORS.border}` }}>
+                {[
+                  { key: 'parlay', label: `⚡ Parlays ${allProps.length > 0 ? `(${allProps.length})` : ''}` },
+                  { key: 'props', label: `📊 Props ${selectedGameId ? `(${props.length})` : ''}` },
+                ].map(tab => (
+                  <button key={tab.key} onClick={() => setActiveTab(tab.key as any)} style={{
+                    flex: 1, padding: '8px 12px',
+                    background: activeTab === tab.key ? COLORS.card : 'transparent',
+                    color: activeTab === tab.key ? COLORS.text : COLORS.textMuted,
+                    border: activeTab === tab.key ? `1px solid ${COLORS.border}` : '1px solid transparent',
+                    borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: activeTab === tab.key ? '600' : '400',
+                    transition: 'all 0.15s ease',
+                  }}>{tab.label}</button>
+                ))}
               </div>
+
               {activeTab === 'parlay' && <ParlayBuilder props={allProps} games={games} sport={sport} />}
               {activeTab === 'props' && (
                 selectedGameId
                   ? <PropsList props={props} onAnalyzeProp={handlePropAnalysis} />
-                  : <div style={{ background: '#1e2a44', padding: '20px', borderRadius: '8px', textAlign: 'center', color: '#9ca3af' }}>Click a game to see its props</div>
+                  : <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: '12px', padding: '24px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px' }}>
+                      Select a game to view its props
+                    </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Right */}
+        {/* Right — Analysis */}
         <div>
-          <h2 style={{ color: "#4fc3f7", marginBottom: "16px" }}>Analysis Engine</h2>
+          <h2 style={{ margin: '0 0 16px', fontSize: '14px', fontWeight: '600', color: COLORS.textMuted, letterSpacing: '1px', textTransform: 'uppercase' }}>
+            Analysis Engine
+          </h2>
+
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={`Select a ${sport.toUpperCase()} game or prop to analyze...`}
-            style={{ width: "100%", height: "200px", background: "#1e2a44", color: "#e0f0ff", border: "1px solid #4fc3f7", padding: "12px", borderRadius: "4px", resize: "vertical" }}
+            placeholder="Select a game or prop to analyze..."
+            style={{
+              width: '100%', height: '160px',
+              background: COLORS.card, color: COLORS.text,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: '12px', padding: '16px',
+              fontSize: '14px', resize: 'vertical',
+              outline: 'none', boxSizing: 'border-box',
+              fontFamily: 'inherit',
+            }}
           />
-          <div style={{ margin: "15px 0" }}>
-            <button onClick={analyze} disabled={loading} style={{ padding: "12px 30px", background: loading ? "#6b7280" : "#4fc3f7", color: "black", fontWeight: "bold", marginRight: "10px", border: "none", borderRadius: "4px", cursor: loading ? "not-allowed" : "pointer" }}>
-              {loading ? "ANALYZING..." : "ANALYZE"}
+
+          <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
+            <button onClick={analyze} disabled={loading || !input.trim()} style={{
+              padding: '10px 24px',
+              background: loading || !input.trim() ? COLORS.card : COLORS.accent,
+              color: loading || !input.trim() ? COLORS.textMuted : 'white',
+              border: `1px solid ${loading || !input.trim() ? COLORS.border : COLORS.accent}`,
+              borderRadius: '8px', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+              fontSize: '14px', fontWeight: '600', transition: 'all 0.15s ease',
+            }}>
+              {loading ? 'Analyzing...' : 'Analyze'}
             </button>
-            <button onClick={() => setMessages([])} style={{ padding: "12px 20px", background: "#374151", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>Clear</button>
+            <button onClick={() => { setMessages([]); setInput(''); }} style={{
+              padding: '10px 16px', background: 'transparent', color: COLORS.textMuted,
+              border: `1px solid ${COLORS.border}`, borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+            }}>Clear</button>
           </div>
-          {error && <div style={{ color: "red", marginBottom: "20px" }}>{error}</div>}
-          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '600px', overflowY: 'auto' }}>
             {messages.map((m, i) => (
-              <div key={i} style={{ marginBottom: "20px", padding: "15px", background: m.role === "user" ? "#1e2a44" : "#0f1c2e", borderLeft: m.role === "assistant" ? "4px solid #4fc3f7" : "none", borderRadius: "4px", whiteSpace: "pre-wrap" }}>
+              <div key={i} style={{
+                padding: '16px',
+                background: m.role === 'user' ? COLORS.card : COLORS.surface,
+                border: `1px solid ${m.role === 'assistant' ? COLORS.accent + '40' : COLORS.border}`,
+                borderRadius: '12px',
+                borderLeft: m.role === 'assistant' ? `3px solid ${COLORS.accent}` : undefined,
+                whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: '1.6',
+              }}>
+                <div style={{ fontSize: '11px', color: COLORS.textMuted, marginBottom: '8px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  {m.role === 'user' ? 'You' : '⚡ BET360'}
+                </div>
                 {m.content}
               </div>
             ))}
@@ -207,8 +296,8 @@ Bet responsibly.`;
         </div>
       </div>
 
-      <div style={{ textAlign: "center", marginTop: "40px", color: "#6b7280", fontSize: "14px" }}>
-        MLB • NBA • NFL • NHL • WNBA • UFC • Real data only • Bet responsibly
+      <div style={{ textAlign: 'center', padding: '24px', borderTop: `1px solid ${COLORS.border}`, fontSize: '12px', color: COLORS.textDim }}>
+        BET360 — Real-time prop intelligence across MLB · NBA · NFL · NHL · WNBA · UFC &nbsp;·&nbsp; Bet responsibly
       </div>
     </div>
   );
