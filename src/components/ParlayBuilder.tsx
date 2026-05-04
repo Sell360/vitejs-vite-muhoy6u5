@@ -262,7 +262,7 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
       if (name === 'value') pool.sort((a, b) => (b.confidence * 0.6 + (b.odds > 0 ? b.odds / 10 : 0) * 0.4) - (a.confidence * 0.6 + (a.odds > 0 ? a.odds / 10 : 0) * 0.4));
       if (name === 'max') pool.sort((a, b) => americanToDecimal(b.odds) - americanToDecimal(a.odds));
       if (name === 'safe') pool = allLegs.filter(l => Math.abs(l.odds) <= 125);
-      if (name === 'sharp') pool = allLegs.filter(l => l.prop.sharpFlag || (l.prop.kalshiEdge?.divergence ?? 0) >= 3);
+      if (name === 'sharp') pool = allLegs.filter(l => l.prop.sharpFlag === true);
       if (attempt === 1) pool = pool.slice(Math.floor(pool.length * 0.3));
 
       const used = new Set<string>();
@@ -390,11 +390,6 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
                           {leg.edgeFlags.map((flag, fi) => (
                             <span key={fi} style={{ fontSize: '11px', background: '#0f2a1a', color: '#4ade80', padding: '2px 6px', borderRadius: '3px' }}>{flag}</span>
                           ))}
-                        </div>
-                      )}
-                      {leg.prop.kalshiEdge && (
-                        <div style={{ fontSize: '11px', color: '#fbbf24', marginTop: '4px' }}>
-                          🎯 Kalshi: {leg.prop.kalshiEdge.kalshiProb}% vs Book: {leg.prop.kalshiEdge.bookProb}% ({leg.prop.kalshiEdge.divergence}% gap)
                         </div>
                       )}
                       {leg.prop.impliedProb && (
