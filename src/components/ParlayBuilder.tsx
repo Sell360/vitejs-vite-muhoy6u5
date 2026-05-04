@@ -279,11 +279,10 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
         const team = leg.prop.team || '';
         const gameId = leg.prop.gameId || '';
 
-        // Skip: duplicate player, same team already used, same game already used (unless we need to fill)
+        // Skip duplicate player only — team/game dedup causes issues with Odds API data
         if (usedPlayers.has(playerKey)) continue;
+        // Only skip same-team if team is actually populated
         if (team && usedTeams.has(team)) continue;
-        // Allow max 1 leg per game to avoid correlated same-game parlays
-        if (gameId && usedGames.has(gameId) && legs.length < size) continue;
 
         usedPlayers.add(playerKey);
         if (team) usedTeams.add(team);
