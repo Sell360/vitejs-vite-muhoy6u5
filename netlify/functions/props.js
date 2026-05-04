@@ -1,4 +1,6 @@
 const https = require('https');
+
+// Daily cache — persists for the day, one fetch per sport
 const memCache = {};
 
 exports.handler = async (event) => {
@@ -6,29 +8,39 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   const { sport, type } = event.queryStringParameters || {};
-  const API_KEY = process.env.VITE_ODDSPAPI_KEY || '19564ce9-b577-4188-92cc-8fb4e4294aec';
+  const ODDS_KEY = process.env.VITE_ODDS_API_KEY || 'eec9270deaa01691ceac36b1b6ada557';
 
-  // Correct OddsPapi sport IDs
-  const SPORT_IDS = {
-    mlb:  13, // Baseball
-    nba:  11, // Basketball
-    nfl:  14, // American Football
-    nhl:  15, // Ice Hockey
-    wnba: 11, // Basketball
-    ufc:  20, // MMA
+  const SPORT_MAP = {
+    mlb:  'baseball_mlb',
+    nba:  'basketball_nba',
+    nfl:  'americanfootball_nfl',
+    nhl:  'icehockey_nhl',
+    wnba: 'basketball_wnba',
+    ufc:  'mma_mixed_martial_arts',
   };
 
-  const sportId = SPORT_IDS[sport];
-  if (!sportId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+  const PROP_MARKETS = {
+    mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
+    nba:  'player_points,player_rebounds,player_assists,player_threes',
+    nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
+    nhl:  'player_shots_on_goal,player_saves,player_points',
+    wnba: 'player_points,player_rebounds,player_assists,player_threes',
+    ufc:  'player_method_of_victory,player_total_rounds',
+  };
 
+  const oddsSport = SPORT_MAP[sport];
+  if (!oddsSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+
+  // Cache key includes date — auto-expires daily
   const today = new Date().toISOString().split('T')[0];
   const cacheKey = `${sport}-${type || 'props'}-${today}`;
-  if (memCache[cacheKey]) return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
+  if (memCache[cacheKey]) {
+    console.log(`Cache hit: ${cacheKey}`);
+    return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
+  }
 
-  const get = (path) => new Promise((resolve, reject) => {
-    https.get(`https://api.oddspapi.io/v4${path}`, {
-      headers: { 'Accept': 'application/json' }
-    }, (res) => {
+  const get = (url) => new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'Accept': 'application/json' } }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
@@ -39,120 +51,74 @@ exports.handler = async (event) => {
   });
 
   try {
-    const now = new Date().toISOString();
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-    const fixturesRes = await get(`/fixtures?apiKey=${API_KEY}&sportId=${sportId}&from=${now}&to=${tomorrow}&hasOdds=true`);
-    if (fixturesRes.status !== 200) throw new Error(`Fixtures ${fixturesRes.status}: ${JSON.stringify(fixturesRes.data).slice(0,200)}`);
-
-    const fixtures = Array.isArray(fixturesRes.data) ? fixturesRes.data : [];
-    if (fixtures.length === 0) return { statusCode: 200, headers, body: JSON.stringify([]) };
-
     if (type === 'games') {
-      const games = [];
-      await Promise.allSettled(fixtures.slice(0, 10).map(async (f) => {
-        try {
-          const r = await get(`/odds?apiKey=${API_KEY}&fixtureId=${f.fixtureId}&oddsFormat=american`);
-          if (r.status !== 200) return;
-          const bookmakers = r.data?.bookmakerOdds || {};
-          const book = bookmakers.draftkings || bookmakers.fanduel || bookmakers.pinnacle || Object.values(bookmakers)[0];
-          if (!book) return;
-          const markets = book.markets || {};
-          // Find moneyline and total markets
-          let homeML = null, awayML = null, total = null, overOdds = null, underOdds = null;
-          Object.entries(markets).forEach(([, market]) => {
-            const name = (market.marketName || '').toLowerCase();
-            if (name.includes('moneyline') || name.includes('winner') || name.includes('1x2')) {
-              Object.entries(market.outcomes || {}).forEach(([, outcome]) => {
-                Object.entries(outcome.players || {}).forEach(([, p]) => {
-                  if (p.bookmakerOutcomeId === 'home' || p.bookmakerOutcomeId === '1') homeML = p.priceAmerican ? parseInt(p.priceAmerican) : p.price;
-                  if (p.bookmakerOutcomeId === 'away' || p.bookmakerOutcomeId === '2') awayML = p.priceAmerican ? parseInt(p.priceAmerican) : p.price;
-                });
-              });
-            }
-            if (name.includes('total') || name.includes('over/under')) {
-              Object.entries(market.outcomes || {}).forEach(([, outcome]) => {
-                Object.entries(outcome.players || {}).forEach(([, p]) => {
-                  if (p.bookmakerOutcomeId === 'over') { total = p.line; overOdds = p.priceAmerican ? parseInt(p.priceAmerican) : p.price; }
-                  if (p.bookmakerOutcomeId === 'under') underOdds = p.priceAmerican ? parseInt(p.priceAmerican) : p.price;
-                });
-              });
-            }
-          });
-          games.push({
-            id: f.fixtureId, homeTeam: f.participant1Name, awayTeam: f.participant2Name,
-            startTime: f.startTime, homeML, awayML, total, overOdds, underOdds,
-            homeSpread: null, homeSpreadOdds: null, awaySpread: null, awaySpreadOdds: null,
-            vendor: 'oddspapi',
-          });
-        } catch { }
-      }));
+      // Game lines — 1 credit total
+      const r = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/odds?apiKey=${ODDS_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`);
+      if (r.status !== 200) throw new Error(`Games ${r.status}: ${JSON.stringify(r.data)}`);
+
+      const games = (Array.isArray(r.data) ? r.data : []).map(game => {
+        const book = game.bookmakers?.find(b => b.key === 'draftkings') || game.bookmakers?.find(b => b.key === 'fanduel') || game.bookmakers?.[0];
+        const h2h = book?.markets?.find(m => m.key === 'h2h');
+        const spread = book?.markets?.find(m => m.key === 'spreads');
+        const total = book?.markets?.find(m => m.key === 'totals');
+        return {
+          id: game.id, homeTeam: game.home_team, awayTeam: game.away_team, startTime: game.commence_time,
+          homeML: h2h?.outcomes?.find(o => o.name === game.home_team)?.price || null,
+          awayML: h2h?.outcomes?.find(o => o.name === game.away_team)?.price || null,
+          homeSpread: spread?.outcomes?.find(o => o.name === game.home_team)?.point || null,
+          homeSpreadOdds: spread?.outcomes?.find(o => o.name === game.home_team)?.price || null,
+          awaySpread: spread?.outcomes?.find(o => o.name === game.away_team)?.point || null,
+          awaySpreadOdds: spread?.outcomes?.find(o => o.name === game.away_team)?.price || null,
+          total: total?.outcomes?.find(o => o.name === 'Over')?.point || null,
+          overOdds: total?.outcomes?.find(o => o.name === 'Over')?.price || null,
+          underOdds: total?.outcomes?.find(o => o.name === 'Under')?.price || null,
+          vendor: book?.key || 'draftkings',
+        };
+      });
+
       memCache[cacheKey] = games;
       return { statusCode: 200, headers, body: JSON.stringify(games) };
     }
 
-    // Player props
-    const allProps = [];
-    await Promise.allSettled(fixtures.slice(0, 6).map(async (f) => {
-      try {
-        const r = await get(`/odds?apiKey=${API_KEY}&fixtureId=${f.fixtureId}&oddsFormat=american&verbosity=3`);
-        if (r.status !== 200) return;
-        const bookmakers = r.data?.bookmakerOdds || {};
-        const book = bookmakers.draftkings || bookmakers.fanduel || bookmakers.pinnacle || Object.values(bookmakers)[0];
-        if (!book) return;
+    // Player props — 1 credit for events + 1 per game (max 6 games)
+    const evR = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`);
+    if (evR.status !== 200) throw new Error(`Events ${evR.status}: ${JSON.stringify(evR.data)}`);
 
-        Object.entries(book.markets || {}).forEach(([, market]) => {
-          const marketName = market.marketName || '';
-          Object.entries(market.outcomes || {}).forEach(([, outcome]) => {
-            Object.entries(outcome.players || {}).forEach(([, player]) => {
-              if (!player.playerName) return;
-              const line = player.line;
-              if (line === null || line === undefined) return;
-              allProps.push({
-                playerName: player.playerName,
-                propType: marketName,
-                line: parseFloat(line),
-                side: player.bookmakerOutcomeId,
-                price: player.priceAmerican ? parseInt(player.priceAmerican) : player.price,
-                gameId: f.fixtureId,
-                homeTeam: f.participant1Name,
-                awayTeam: f.participant2Name,
-                startTime: f.startTime,
-              });
-            });
+    const events = (Array.isArray(evR.data) ? evR.data : []).filter(e =>
+      new Date(e.commence_time).getTime() > Date.now() - 3 * 60 * 60 * 1000
+    ).slice(0, 6); // Max 6 games = max 6 credits
+
+    if (events.length === 0) {
+      memCache[cacheKey] = [];
+      return { statusCode: 200, headers, body: JSON.stringify([]) };
+    }
+
+    const allProps = [];
+    await Promise.allSettled(events.map(async ev => {
+      try {
+        const r = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${PROP_MARKETS[sport]}&oddsFormat=american`);
+        if (r.status !== 200) return;
+        const book = r.data.bookmakers?.find(b => b.key === 'draftkings') || r.data.bookmakers?.find(b => b.key === 'fanduel') || r.data.bookmakers?.[0];
+        if (!book) return;
+        book.markets?.forEach(market => {
+          const playerMap = new Map();
+          market.outcomes?.forEach(outcome => {
+            const name = outcome.description;
+            if (!name) return;
+            if (!playerMap.has(name)) {
+              playerMap.set(name, { id: `${ev.id}-${market.key}-${name}`, playerId: '', playerName: name, team: outcome.team || '', propType: market.key, line: outcome.point ?? 0, overOdds: -110, underOdds: -110, gameId: ev.id, vendor: book.key, homeTeam: ev.home_team, awayTeam: ev.away_team, startTime: ev.commence_time });
+            }
+            const p = playerMap.get(name);
+            if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
+            if (outcome.name === 'Under') p.underOdds = outcome.price;
           });
+          playerMap.forEach(p => { if (p.playerName) allProps.push(p); });
         });
       } catch { }
     }));
 
-    // Pair over/under
-    const paired = new Map();
-    allProps.forEach(p => {
-      const key = `${p.gameId}-${p.playerName}-${p.propType}-${p.line}`;
-      if (!paired.has(key)) {
-        paired.set(key, {
-          id: key, playerId: '', playerName: p.playerName, team: '',
-          propType: p.propType, line: p.line, overOdds: -110, underOdds: -110,
-          gameId: p.gameId, vendor: 'oddspapi',
-          homeTeam: p.homeTeam, awayTeam: p.awayTeam, startTime: p.startTime,
-        });
-      }
-      const entry = paired.get(key);
-      const side = (p.side || '').toLowerCase();
-      if (side === 'over' || side === 'yes' || side === 'more') entry.overOdds = p.price;
-      if (side === 'under' || side === 'no' || side === 'less') entry.underOdds = p.price;
-    });
-
-    const props = Array.from(paired.values()).filter(p => p.playerName && p.line > 0);
-
-    if (props.length === 0) {
-      return { statusCode: 200, headers, body: JSON.stringify({
-        error: `0 props. Raw: ${allProps.length}. Fixtures: ${fixtures.length}. Sample: ${JSON.stringify(allProps.slice(0,2))}`
-      })};
-    }
-
-    memCache[cacheKey] = props;
-    return { statusCode: 200, headers, body: JSON.stringify(props) };
+    memCache[cacheKey] = allProps;
+    return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
   } catch (err) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
