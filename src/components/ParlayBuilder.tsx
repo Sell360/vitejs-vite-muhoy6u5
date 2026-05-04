@@ -486,7 +486,6 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
 // DraftKings deep link helper
 export function buildDKDeepLink(legs: { playerName: string; propType: string; line: number; pick: string }[]): string {
   // DraftKings sportsbook deep link format
-  const base = 'https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups';
   // For now open DK search with the first leg's player name
   const query = encodeURIComponent(legs[0]?.playerName || 'props');
   return `https://sportsbook.draftkings.com/search?q=${query}`;
