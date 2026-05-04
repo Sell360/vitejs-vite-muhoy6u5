@@ -3,6 +3,20 @@ const https = require('https');
 // Daily cache — persists for the day, one fetch per sport
 const memCache = {};
 
+const PROP_LABELS = {
+  batter_hits: 'Hits', batter_total_bases: 'Total Bases', pitcher_strikeouts: 'Strikeouts',
+  batter_rbis: 'RBIs', batter_home_runs: 'Home Runs', batter_walks: 'Walks',
+  player_points: 'Points', player_rebounds: 'Rebounds', player_assists: 'Assists',
+  player_threes: '3-Pointers', player_points_rebounds_assists: 'Pts+Reb+Ast',
+  player_steals: 'Steals', player_blocks: 'Blocks',
+  player_pass_yds: 'Pass Yards', player_rush_yds: 'Rush Yards',
+  player_reception_yds: 'Rec Yards', player_receptions: 'Receptions',
+  player_pass_tds: 'Pass TDs', player_rush_attempts: 'Rush Attempts',
+  player_shots_on_goal: 'Shots on Goal', player_saves: 'Saves',
+  player_goals: 'Goals', player_method_of_victory: 'Method of Victory',
+  player_total_rounds: 'Total Rounds',
+};
+
 exports.handler = async (event) => {
   const headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
@@ -106,7 +120,7 @@ exports.handler = async (event) => {
             const name = outcome.description;
             if (!name) return;
             if (!playerMap.has(name)) {
-              playerMap.set(name, { id: `${ev.id}-${market.key}-${name}`, playerId: '', playerName: name, team: outcome.team || '', propType: market.key, line: outcome.point ?? 0, overOdds: -110, underOdds: -110, gameId: ev.id, vendor: book.key, homeTeam: ev.home_team, awayTeam: ev.away_team, startTime: ev.commence_time });
+              playerMap.set(name, { id: `${ev.id}-${market.key}-${name}`, playerId: '', playerName: name, team: outcome.team || '', propType: PROP_LABELS[market.key] || market.key, line: outcome.point ?? 0, overOdds: -110, underOdds: -110, gameId: ev.id, vendor: book.key, homeTeam: ev.home_team, awayTeam: ev.away_team, startTime: ev.commence_time });
             }
             const p = playerMap.get(name);
             if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
