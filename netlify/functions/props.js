@@ -17,41 +17,68 @@ exports.handler = async (event) => {
   const groupId = DK_GROUPS[sport];
   if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
-  const fetchDK = (url) => new Promise((resolve, reject) => {
-    const options = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://sportsbook.draftkings.com/',
-        'Origin': 'https://sportsbook.draftkings.com',
-        'x-requested-with': 'XMLHttpRequest',
-      }
-    };
-    https.get(url, options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        if (res.statusCode !== 200) return reject(new Error(`DK ${res.statusCode}`));
-        try { resolve(JSON.parse(data)); } catch(e) { reject(e); }
+  // Rotate through multiple DK regional endpoints to avoid IP blocks
+  const DK_HOSTS = [
+    'sportsbook.draftkings.com',
+    'sportsbook-us-nj.draftkings.com',
+    'sportsbook-us-pa.draftkings.com',
+    'sportsbook-us-co.draftkings.com',
+  ];
+
+  const fetchDK = (path) => new Promise((resolve, reject) => {
+    let lastError;
+    const tryHost = (i) => {
+      if (i >= DK_HOSTS.length) return reject(lastError || new Error('All hosts failed'));
+      const host = DK_HOSTS[i];
+      const url = `https://${host}/sites/US-SB/api/v5${path}`;
+      const req = https.request(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': `https://${host}/`,
+          'Origin': `https://${host}`,
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'Connection': 'keep-alive',
+        }
+      }, (res) => {
+        if (res.statusCode === 403 || res.statusCode === 429) {
+          lastError = new Error(`${host} returned ${res.statusCode}`);
+          return tryHost(i + 1);
+        }
+        if (res.statusCode !== 200) {
+          lastError = new Error(`${host} returned ${res.statusCode}`);
+          return tryHost(i + 1);
+        }
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          try {
+            const body = Buffer.concat(chunks).toString();
+            resolve(JSON.parse(body));
+          } catch(e) { tryHost(i + 1); }
+        });
       });
-    }).on('error', reject);
+      req.on('error', (e) => { lastError = e; tryHost(i + 1); });
+      req.end();
+    };
+    tryHost(0);
   });
 
   try {
-    const catData = await fetchDK(
-      `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`
-    );
-
+    const catData = await fetchDK(`/eventgroups/${groupId}?format=json`);
     const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists',
       'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
     const cats = catData?.eventGroup?.offerCategories || [];
     const propCats = cats.filter(c => propKeywords.some(k => (c.name || '').toLowerCase().includes(k)));
 
-    if (propCats.length === 0) throw new Error('No prop categories found');
+    if (propCats.length === 0) throw new Error('No prop categories found in DK response');
 
     const allProps = [];
-
     await Promise.allSettled(
       propCats.slice(0, 8).map(async (cat) => {
         const catId = cat.offerCategoryId;
@@ -60,9 +87,7 @@ exports.handler = async (event) => {
             const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
             if (!subcatId) return;
             try {
-              const data = await fetchDK(
-                `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`
-              );
+              const data = await fetchDK(`/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`);
               allProps.push(...parseDKProps(data, subcat.name || cat.name || ''));
             } catch { }
           })
@@ -76,8 +101,7 @@ exports.handler = async (event) => {
       if (!seen.has(k)) seen.set(k, p);
     });
     const deduped = Array.from(seen.values());
-
-    if (deduped.length === 0) throw new Error('No props found');
+    if (deduped.length === 0) throw new Error('DK returned 0 props');
     return { statusCode: 200, headers, body: JSON.stringify(deduped) };
 
   } catch (err) {
@@ -110,10 +134,7 @@ function parseDKProps(data, defaultPropType) {
               playerId: '',
               playerName: cleanName(playerName),
               team: offer?.teamAbbreviation || '',
-              propType,
-              line,
-              overOdds,
-              underOdds,
+              propType, line, overOdds, underOdds,
               gameId: offer?.eventId?.toString() || '',
               vendor: 'draftkings',
             });
@@ -121,7 +142,7 @@ function parseDKProps(data, defaultPropType) {
         });
       });
     });
-  } catch(e) {}
+  } catch { }
   return props;
 }
 
