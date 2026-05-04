@@ -113,58 +113,15 @@ class ApiService {
     const hit = cache[ck];
     if (hit && Date.now() - hit.ts < TTL) return hit.data;
 
-    const DK_GROUPS: Record<Sport, string> = {
-      mlb: '84240', nba: '42648', nfl: '88808',
-      nhl: '42133', wnba: '42648', ufc: '9',
-    };
+    const res = await fetch(`/api/props?sport=${sport}`);
+    if (!res.ok) throw new Error(`Props function returned ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!Array.isArray(data) || data.length === 0) throw new Error('No props returned');
 
-    const groupId = DK_GROUPS[sport];
-    if (!groupId) throw new Error(`No group for ${sport}`);
-
-    // Use /dk/ proxy path — Netlify rewrites to DraftKings server-side
-    const catRes = await fetch(`/dk/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`);
-    if (!catRes.ok) throw new Error(`DK proxy returned ${catRes.status}`);
-    const catData = await catRes.json();
-
-    const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists',
-      'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
-    const cats = catData?.eventGroup?.offerCategories || [];
-    const propCats = cats.filter((c: any) =>
-      propKeywords.some(k => (c.name || '').toLowerCase().includes(k))
-    );
-    if (propCats.length === 0) throw new Error('No prop categories found');
-
-    const allProps: PlayerProp[] = [];
-    await Promise.allSettled(
-      propCats.slice(0, 8).map(async (cat: any) => {
-        const catId = cat.offerCategoryId;
-        await Promise.allSettled(
-          (cat.offerSubcategoryDescriptors || []).slice(0, 8).map(async (subcat: any) => {
-            const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
-            if (!subcatId) return;
-            try {
-              const res = await fetch(
-                `/dk/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`
-              );
-              if (!res.ok) return;
-              const data = await res.json();
-              allProps.push(...this.parseDKProps(data, subcat.name || cat.name || ''));
-            } catch { }
-          })
-        );
-      })
-    );
-
-    const seen = new Map<string, PlayerProp>();
-    allProps.forEach(p => {
-      const k = `${p.playerName}-${p.propType}-${p.line}`;
-      if (!seen.has(k)) seen.set(k, this.enrichProp(p));
-    });
-    const deduped = Array.from(seen.values());
-    if (deduped.length === 0) throw new Error('DK returned 0 props');
-
-    cache[ck] = { data: deduped, ts: Date.now() };
-    return deduped;
+    const enriched = data.map((p: any) => this.enrichProp(p));
+    cache[ck] = { data: enriched, ts: Date.now() };
+    return enriched;
   }
 
   async getGameLines(sport: Sport): Promise<GameLine[]> {
