@@ -3,6 +3,13 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Proxy DraftKings through our domain — bypasses CORS
+[[redirects]]
+  from = "/dk/*"
+  to = "https://sportsbook.draftkings.com/:splat"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
