@@ -29,7 +29,7 @@ function calcPayout(stake: number, odds: number): number {
   return Math.round(stake * americanToDecimal(odds) * 100) / 100;
 }
 
-const STORAGE_KEY = 'bet360_tracker';
+const STORAGE_KEY = 'betz360_tracker';
 
 function loadBets(): BetEntry[] {
   try {

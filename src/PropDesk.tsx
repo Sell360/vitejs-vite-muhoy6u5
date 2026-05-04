@@ -22,7 +22,7 @@ const C = {
   yellow: '#f59e0b', text: '#f1f5f9', muted: '#64748b', dim: '#374151',
 };
 
-export default function Bet360() {
+export default function Betz360() {
   const [sport, setSport] = useState<Sport>('mlb');
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Array<{role: string, content: string}>>([]);
@@ -57,7 +57,7 @@ export default function Bet360() {
     const newMessages = [...messages, { role: "user", content: userMsg }];
     setMessages(newMessages);
     setTimeout(() => {
-      const reply = `BET360 — ${sport.toUpperCase()}\n\nGames: ${games.length} | Props: ${allProps.filter(p => !p.isGameLine).length} | Lines: ${allProps.filter(p => p.isGameLine).length}\nUpdated: ${lastUpdated?.toLocaleTimeString() || 'Never'}\n\nCheck Parlay Builder for today's top picks.\nConfidence: ${Math.floor(Math.random() * 20 + 75)}%\n\nBet responsibly.`;
+      const reply = `BETZ360 — ${sport.toUpperCase()}\n\nGames: ${games.length} | Props: ${allProps.filter(p => !p.isGameLine).length} | Lines: ${allProps.filter(p => p.isGameLine).length}\nUpdated: ${lastUpdated?.toLocaleTimeString() || 'Never'}\n\nCheck Parlay Builder for today's top picks.\nConfidence: ${Math.floor(Math.random() * 20 + 75)}%\n\nBet responsibly.`;
       setMessages([...newMessages, { role: "assistant", content: reply }]);
       setLoading(false);
     }, 800);
@@ -146,7 +146,7 @@ export default function Bet360() {
                 borderRadius: '8px', whiteSpace: 'pre-wrap', fontSize: '13px', lineHeight: '1.5',
               }}>
                 <div style={{ fontSize: '10px', color: C.muted, marginBottom: '4px', fontWeight: '600', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                  {m.role === 'user' ? 'You' : '⚡ BET360'}
+                  {m.role === 'user' ? 'You' : '⚡ BETZ360'}
                 </div>
                 {m.content}
               </div>
@@ -245,7 +245,7 @@ export default function Bet360() {
       )}
 
       <div style={{ textAlign: 'center', padding: '20px 16px', borderTop: `1px solid ${C.border}`, fontSize: '12px', color: C.dim, marginTop: '24px' }}>
-        BET360 — MLB · NBA · NFL · NHL · WNBA · UFC · Bet responsibly
+        BETZ360 — MLB · NBA · NFL · NHL · WNBA · UFC · Bet responsibly
       </div>
     </div>
   );
