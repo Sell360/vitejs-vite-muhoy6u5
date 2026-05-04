@@ -231,7 +231,7 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
 
   const scheduledGameIds = new Set(games.filter(g => g.status === 'scheduled').map(g => g.id));
   // Game lines must match ESPN game IDs. Player props from Odds API have different IDs so include all.
-  const eligible = props.filter(p => !p.injured && (p.isGameLine ? scheduledGameIds.has(p.gameId) : true));
+  const eligible = props.filter(p => !p.injured);
   if (eligible.length === 0) return [];
 
   // Score every leg — lower threshold to 40 to generate more options
