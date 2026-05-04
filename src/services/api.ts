@@ -77,15 +77,6 @@ const ESPN_PATHS: Record<Sport, string> = {
   ufc:  'mma/ufc',
 };
 
-const DK_GROUPS: Record<Sport, string> = {
-  mlb:  '84240',
-  nba:  '42648',
-  nfl:  '88808',
-  nhl:  '42133',
-  wnba: '42648',
-  ufc:  '9',
-};
-
 const cache: Record<string, { data: any; ts: number }> = {};
 const TTL = 8 * 60 * 1000;
 
@@ -116,67 +107,27 @@ class ApiService {
   async getMLBGames(date: string)  { return this.getGames('mlb', date) as Promise<GameData[]>; }
   async getWNBAGames(date: string) { return this.getGames('wnba', date) as Promise<WNBAGameData[]>; }
 
+  // Props via Netlify function (DK mobile API)
   async getAllProps(sport: Sport): Promise<PlayerProp[]> {
     const ck = `props-${sport}`;
     const hit = cache[ck];
     if (hit && Date.now() - hit.ts < TTL) return hit.data;
 
-    const groupId = DK_GROUPS[sport];
-    if (!groupId) throw new Error(`No DK group for ${sport}`);
+    const res = await fetch(`/api/props?sport=${sport}`);
+    if (!res.ok) throw new Error(`Props function returned ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!Array.isArray(data) || data.length === 0) throw new Error('No props returned');
 
-    // Call DraftKings directly from browser — works from custom domain
-    const catRes = await fetch(
-      `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`
-    );
-    if (!catRes.ok) throw new Error(`DraftKings returned ${catRes.status}`);
-    const catData = await catRes.json();
-
-    const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists',
-      'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
-    const cats = catData?.eventGroup?.offerCategories || [];
-    const propCats = cats.filter((c: any) =>
-      propKeywords.some(k => (c.name || '').toLowerCase().includes(k))
-    );
-    if (propCats.length === 0) throw new Error('No prop categories found');
-
-    const allProps: PlayerProp[] = [];
-    await Promise.allSettled(
-      propCats.slice(0, 8).map(async (cat: any) => {
-        const catId = cat.offerCategoryId;
-        await Promise.allSettled(
-          (cat.offerSubcategoryDescriptors || []).slice(0, 8).map(async (subcat: any) => {
-            const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
-            if (!subcatId) return;
-            try {
-              const res = await fetch(
-                `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`
-              );
-              if (!res.ok) return;
-              const data = await res.json();
-              allProps.push(...this.parseDKProps(data, subcat.name || cat.name || ''));
-            } catch { }
-          })
-        );
-      })
-    );
-
-    const seen = new Map<string, PlayerProp>();
-    allProps.forEach(p => {
-      const k = `${p.playerName}-${p.propType}-${p.line}`;
-      if (!seen.has(k)) seen.set(k, this.enrichProp(p));
-    });
-    const deduped = Array.from(seen.values());
-    if (deduped.length === 0) throw new Error('DraftKings returned 0 props');
-
-    cache[ck] = { data: deduped, ts: Date.now() };
-    return deduped;
+    const enriched = data.map((p: any) => this.enrichProp(p));
+    cache[ck] = { data: enriched, ts: Date.now() };
+    return enriched;
   }
 
   async getGameLines(sport: Sport): Promise<GameLine[]> {
     const ck = `gamelines-${sport}`;
     const hit = cache[ck];
     if (hit && Date.now() - hit.ts < TTL) return hit.data;
-
     try {
       const res = await fetch(`/api/props?sport=${sport}&type=games`);
       if (!res.ok) throw new Error(`Game lines ${res.status}`);
@@ -191,46 +142,13 @@ class ApiService {
     }
   }
 
-  // Convert game lines into PlayerProp format so parlay builder can use them
   gameLinesToProps(lines: GameLine[]): PlayerProp[] {
     const props: PlayerProp[] = [];
     lines.forEach(line => {
-      if (line.homeML) props.push({
-        id: `gl-${line.id}-homeML`,
-        playerId: '', playerName: line.homeTeam,
-        team: line.homeTeam, propType: 'Moneyline',
-        line: 0, overOdds: line.homeML, underOdds: 0,
-        gameId: line.id, vendor: line.vendor,
-        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
-        startTime: line.startTime, isGameLine: true,
-      });
-      if (line.awayML) props.push({
-        id: `gl-${line.id}-awayML`,
-        playerId: '', playerName: line.awayTeam,
-        team: line.awayTeam, propType: 'Moneyline',
-        line: 0, overOdds: line.awayML, underOdds: 0,
-        gameId: line.id, vendor: line.vendor,
-        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
-        startTime: line.startTime, isGameLine: true,
-      });
-      if (line.total && line.overOdds) props.push({
-        id: `gl-${line.id}-over`,
-        playerId: '', playerName: `${line.awayTeam} @ ${line.homeTeam}`,
-        team: '', propType: 'Game Total',
-        line: line.total, overOdds: line.overOdds, underOdds: line.underOdds || -110,
-        gameId: line.id, vendor: line.vendor,
-        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
-        startTime: line.startTime, isGameLine: true,
-      });
-      if (line.homeSpread && line.homeSpreadOdds) props.push({
-        id: `gl-${line.id}-spread`,
-        playerId: '', playerName: `${line.homeTeam} ${line.homeSpread > 0 ? '+' : ''}${line.homeSpread}`,
-        team: line.homeTeam, propType: 'Spread',
-        line: line.homeSpread, overOdds: line.homeSpreadOdds, underOdds: line.awaySpreadOdds || -110,
-        gameId: line.id, vendor: line.vendor,
-        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
-        startTime: line.startTime, isGameLine: true,
-      });
+      if (line.homeML) props.push({ id: `gl-${line.id}-homeML`, playerId: '', playerName: line.homeTeam, team: line.homeTeam, propType: 'Moneyline', line: 0, overOdds: line.homeML, underOdds: 0, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
+      if (line.awayML) props.push({ id: `gl-${line.id}-awayML`, playerId: '', playerName: line.awayTeam, team: line.awayTeam, propType: 'Moneyline', line: 0, overOdds: line.awayML, underOdds: 0, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
+      if (line.total && line.overOdds) props.push({ id: `gl-${line.id}-total`, playerId: '', playerName: `${line.awayTeam} @ ${line.homeTeam}`, team: '', propType: 'Game Total', line: line.total, overOdds: line.overOdds, underOdds: line.underOdds || -110, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
+      if (line.homeSpread && line.homeSpreadOdds) props.push({ id: `gl-${line.id}-spread`, playerId: '', playerName: `${line.homeTeam} ${line.homeSpread > 0 ? '+' : ''}${line.homeSpread}`, team: line.homeTeam, propType: 'Spread', line: line.homeSpread, overOdds: line.homeSpreadOdds, underOdds: line.awaySpreadOdds || -110, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
     });
     return props;
   }
@@ -240,71 +158,10 @@ class ApiService {
   async getMLBPlayerProps(_id: string)     { return this.getAllProps('mlb'); }
   async getWNBAPlayerProps(_id: string)    { return this.getAllProps('wnba'); }
 
-  private parseDKProps(data: any, defaultPropType: string): PlayerProp[] {
-    const props: PlayerProp[] = [];
-    try {
-      (data?.eventGroup?.offerCategories || []).forEach((cat: any) => {
-        (cat?.offerSubcategoryDescriptors || []).forEach((subcat: any) => {
-          const propType = subcat?.name || defaultPropType;
-          (subcat?.offerSubcategory?.offers || []).forEach((offerGroup: any) => {
-            if (!Array.isArray(offerGroup)) return;
-            offerGroup.forEach((offer: any) => {
-              const outcomes = offer?.outcomes || [];
-              if (outcomes.length < 2) return;
-              const playerName = offer?.participant || offer?.label || '';
-              if (!playerName || playerName.length < 2) return;
-              const over = outcomes.find((o: any) => o?.label?.toLowerCase() === 'over');
-              const under = outcomes.find((o: any) => o?.label?.toLowerCase() === 'under');
-              if (!over && !under) return;
-              const line = parseFloat(over?.line || under?.line || '0') || 0;
-              const overOdds = this.parseOdds(over?.oddsAmerican);
-              const underOdds = this.parseOdds(under?.oddsAmerican);
-              if (overOdds === 0 && underOdds === 0) return;
-              props.push({
-                id: `dk-${offer?.providerId || Math.random()}-${playerName}`,
-                playerId: '',
-                playerName: this.cleanName(playerName),
-                team: offer?.teamAbbreviation || '',
-                propType, line, overOdds, underOdds,
-                gameId: offer?.eventId?.toString() || '',
-                vendor: 'draftkings',
-              });
-            });
-          });
-        });
-      });
-    } catch { }
-    return props;
-  }
-
-  private parseOdds(raw: any): number {
-    if (!raw) return 0;
-    const n = parseInt(raw.toString().replace(/[^-\d]/g, ''));
-    return isNaN(n) ? 0 : n;
-  }
-
-  private cleanName(name: string): string {
-    if (name.includes(',')) {
-      const parts = name.split(',').map((s: string) => s.trim());
-      return `${parts[1]} ${parts[0]}`;
-    }
-    return name.trim();
-  }
-
   private enrichProp(p: any): PlayerProp {
     const ovDec = p.overOdds > 0 ? p.overOdds / 100 + 1 : 100 / Math.abs(p.overOdds || 110) + 1;
     const unDec = p.underOdds > 0 ? p.underOdds / 100 + 1 : 100 / Math.abs(p.underOdds || 110) + 1;
-    return {
-      ...p,
-      impliedProb: {
-        over: Math.round((1 / ovDec) * 100),
-        under: Math.round((1 / unDec) * 100),
-        vig: Math.round(((1 / ovDec) + (1 / unDec) - 1) * 100),
-      },
-      injured: false,
-      sharpFlag: false,
-      kalshiEdge: null,
-    };
+    return { ...p, impliedProb: { over: Math.round((1 / ovDec) * 100), under: Math.round((1 / unDec) * 100), vig: Math.round(((1 / ovDec) + (1 / unDec) - 1) * 100) }, injured: false, sharpFlag: false, kalshiEdge: null };
   }
 
   private transformESPN(events: any[]): GameData[] {
