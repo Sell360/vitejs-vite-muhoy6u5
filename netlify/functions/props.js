@@ -6,201 +6,102 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   const { sport } = event.queryStringParameters || {};
+  const ODDS_KEY = process.env.VITE_ODDS_API_KEY;
 
-  const DK_GROUPS = {
-    mlb:  '84240',
-    nba:  '42648',
-    nfl:  '88808',
-    nhl:  '42133',
-    wnba: '42648',
-    ufc:  '9',
-  };
-
-  const groupId = DK_GROUPS[sport];
-  if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
-
-  const DK_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://sportsbook.draftkings.com/',
-  };
-
-  try {
-    // Step 1: get all categories for the sport
-    const catRes = await fetch(
-      `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`,
-      { headers: DK_HEADERS }
-    );
-    if (!catRes.ok) throw new Error(`DK categories ${catRes.status}`);
-    const catData = await catRes.json();
-
-    // Find player prop categories by name
-    const propKeywords = ['player', 'batter', 'pitcher', 'goalscorer', 'points', 'rebounds', 'assists', 'passing', 'rushing', 'receiving', 'shots', 'saves'];
-    const cats = catData?.eventGroup?.offerCategories || [];
-    
-    const propCats = cats.filter((c) => {
-      const name = (c.name || '').toLowerCase();
-      return propKeywords.some(k => name.includes(k));
-    });
-
-    if (propCats.length === 0) {
-      // Just use all categories if we can't find prop-specific ones
-      propCats.push(...cats.slice(0, 5));
-    }
-
-    // Step 2: fetch each prop category
-    const allProps = [];
-    
-    await Promise.allSettled(
-      propCats.map(async (cat) => {
-        const catId = cat.offerCategoryId;
-        const subcats = cat.offerSubcategoryDescriptors || [];
-        
-        await Promise.allSettled(
-          subcats.slice(0, 10).map(async (subcat) => {
-            const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
-            if (!subcatId) return;
-            
-            try {
-              const res = await fetch(
-                `https://sportsbook.draftkings.com/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`,
-                { headers: DK_HEADERS }
-              );
-              if (!res.ok) return;
-              const data = await res.json();
-              const props = parseDKProps(data, subcat.name || cat.name || '');
-              allProps.push(...props);
-            } catch { /* skip failed subcats */ }
-          })
-        );
-      })
-    );
-
-    // Deduplicate
-    const seen = new Map();
-    allProps.forEach(p => {
-      const k = `${p.playerName}-${p.propType}-${p.line}`;
-      if (!seen.has(k)) seen.set(k, p);
-    });
-    const deduped = Array.from(seen.values());
-
-    if (deduped.length > 0) {
-      return { statusCode: 200, headers, body: JSON.stringify(deduped) };
-    }
-
-    // Fallback to PrizePicks
-    throw new Error('No props found from DraftKings');
-
-  } catch (dkErr) {
-    console.log('DK failed, trying PrizePicks:', dkErr.message);
-    
-    try {
-      const ppLeagues = { mlb: 'MLB', nba: 'NBA', nfl: 'NFL', nhl: 'NHL', wnba: 'WNBA', ufc: 'UFC' };
-      const res = await fetch(
-        `https://api.prizepicks.com/projections?league_id=${ppLeagues[sport]}&per_page=250&single_stat=true`,
-        { headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }
-      );
-      if (!res.ok) throw new Error(`PrizePicks ${res.status}`);
-      const data = await res.json();
-      const props = parsePPProps(data);
-      
-      if (props.length === 0) throw new Error('PrizePicks returned no props');
-      return { statusCode: 200, headers, body: JSON.stringify(props) };
-
-    } catch (ppErr) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: `DK: ${dkErr.message} | PP: ${ppErr.message}` })
-      };
-    }
+  if (!ODDS_KEY) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'No ODDS API key configured' }) };
   }
-};
 
-function parseDKProps(data, defaultPropType) {
-  const props = [];
+  const SPORT_MAP = {
+    mlb:  'baseball_mlb',
+    nba:  'basketball_nba',
+    nfl:  'americanfootball_nfl',
+    nhl:  'icehockey_nhl',
+    wnba: 'basketball_wnba',
+    ufc:  'mma_mixed_martial_arts',
+  };
+
+  const MARKETS = {
+    mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs,batter_walks',
+    nba:  'player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists,player_steals,player_blocks',
+    nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions,player_pass_tds,player_rush_attempts',
+    nhl:  'player_shots_on_goal,player_saves,player_points,player_goals,player_assists',
+    wnba: 'player_points,player_rebounds,player_assists,player_threes,player_points_rebounds_assists',
+    ufc:  'player_method_of_victory,player_total_rounds',
+  };
+
+  const oddsSport = SPORT_MAP[sport];
+  if (!oddsSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+
   try {
-    const cats = data?.eventGroup?.offerCategories || [];
-    cats.forEach(cat => {
-      (cat?.offerSubcategoryDescriptors || []).forEach(subcat => {
-        const propType = subcat?.name || defaultPropType;
-        const offers = subcat?.offerSubcategory?.offers || [];
-        offers.forEach(offerGroup => {
-          if (!Array.isArray(offerGroup)) return;
-          offerGroup.forEach(offer => {
-            const outcomes = offer?.outcomes || [];
-            if (outcomes.length < 2) return;
-            const playerName = offer?.participant || offer?.label || '';
-            if (!playerName || playerName.length < 2) return;
-            const over = outcomes.find(o => o?.label?.toLowerCase() === 'over');
-            const under = outcomes.find(o => o?.label?.toLowerCase() === 'under');
-            if (!over && !under) return;
-            const line = parseFloat(over?.line || under?.line || '0') || 0;
-            const overOdds = parseOdds(over?.oddsAmerican);
-            const underOdds = parseOdds(under?.oddsAmerican);
-            if (overOdds === 0 && underOdds === 0) return;
-            props.push({
-              id: `dk-${offer?.providerId || Math.random()}-${playerName}`,
+    // Get events
+    const evRes = await fetch(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`);
+    if (!evRes.ok) {
+      const txt = await evRes.text();
+      throw new Error(`Events ${evRes.status}: ${txt.slice(0, 200)}`);
+    }
+    const events = await evRes.json();
+    if (!Array.isArray(events) || events.length === 0) {
+      return { statusCode: 200, headers, body: JSON.stringify([]) };
+    }
+
+    // Only upcoming games (not finished)
+    const active = events.filter(e => new Date(e.commence_time).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+    if (active.length === 0) return { statusCode: 200, headers, body: JSON.stringify([]) };
+
+    // Fetch props for each event
+    const results = await Promise.allSettled(
+      active.slice(0, 10).map(e =>
+        fetch(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${e.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${MARKETS[sport]}&oddsFormat=american`)
+          .then(r => r.ok ? r.json() : null)
+      )
+    );
+
+    const allProps = [];
+
+    results.forEach((result, i) => {
+      if (result.status !== 'fulfilled' || !result.value) return;
+      const data = result.value;
+      const ev = active[i];
+
+      const book = data.bookmakers?.find(b => b.key === 'draftkings')
+        || data.bookmakers?.find(b => b.key === 'fanduel')
+        || data.bookmakers?.[0];
+      if (!book) return;
+
+      book.markets?.forEach(market => {
+        const playerMap = new Map();
+        market.outcomes?.forEach(outcome => {
+          const name = outcome.description;
+          if (!name) return;
+          if (!playerMap.has(name)) {
+            playerMap.set(name, {
+              id: `${ev.id}-${market.key}-${name}`,
               playerId: '',
-              playerName: cleanName(playerName),
-              team: offer?.teamAbbreviation || '',
-              propType,
-              line,
-              overOdds,
-              underOdds,
-              gameId: offer?.eventId?.toString() || '',
-              vendor: 'draftkings',
+              playerName: name,
+              team: outcome.team || '',
+              propType: market.key,
+              line: outcome.point ?? 0,
+              overOdds: -110,
+              underOdds: -110,
+              gameId: ev.id,
+              vendor: book.key,
+              homeTeam: ev.home_team,
+              awayTeam: ev.away_team,
+              startTime: ev.commence_time,
             });
-          });
+          }
+          const p = playerMap.get(name);
+          if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
+          if (outcome.name === 'Under') p.underOdds = outcome.price;
         });
+        playerMap.forEach(p => { if (p.playerName) allProps.push(p); });
       });
     });
-  } catch (e) { console.error('DK parse error:', e.message); }
-  return props;
-}
 
-function parsePPProps(data) {
-  const props = [];
-  const players = {};
-  (data.included || []).forEach(item => {
-    if (item.type === 'new_player') players[item.id] = item.attributes;
-  });
-  (data.data || []).forEach(proj => {
-    const attr = proj.attributes;
-    if (!attr) return;
-    const playerRel = proj.relationships?.new_player?.data;
-    const player = playerRel ? players[playerRel.id] : null;
-    const playerName = player?.display_name || attr.description || '';
-    if (!playerName) return;
-    const line = parseFloat(attr.line_score) || 0;
-    if (!line) return;
-    props.push({
-      id: proj.id,
-      playerId: playerRel?.id || '',
-      playerName,
-      team: player?.team || '',
-      propType: attr.stat_type || '',
-      line,
-      overOdds: -110,
-      underOdds: -110,
-      gameId: attr.game_id || proj.id,
-      vendor: 'prizepicks',
-    });
-  });
-  return props;
-}
+    return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
-function parseOdds(raw) {
-  if (!raw) return 0;
-  const n = parseInt(raw.toString().replace(/[^-\d]/g, ''));
-  return isNaN(n) ? 0 : n;
-}
-
-function cleanName(name) {
-  if (name.includes(',')) {
-    const parts = name.split(',').map(s => s.trim());
-    return `${parts[1]} ${parts[0]}`;
+  } catch (err) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
-  return name.trim();
-}
+};
