@@ -131,7 +131,7 @@ exports.handler = async (event) => {
       } catch { }
     }));
 
-    memCache[cacheKey] = allProps;
+    if (allProps.length > 0) memCache[cacheKey] = allProps;
     return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
   } catch (err) {
