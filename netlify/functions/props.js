@@ -7,22 +7,25 @@ exports.handler = async (event) => {
 
   const { sport, type } = event.queryStringParameters || {};
   const API_KEY = process.env.VITE_ODDSPAPI_KEY || '19564ce9-b577-4188-92cc-8fb4e4294aec';
+  const BASE = 'api.oddspapi.io';
 
-  const LEAGUE_MAP = {
-    mlb: 'baseball_mlb', nba: 'basketball_nba', nfl: 'americanfootball_nfl',
-    nhl: 'icehockey_nhl', wnba: 'basketball_wnba', ufc: 'mma_mixed_martial_arts',
+  // OddsPapi sport IDs
+  const SPORT_IDS = {
+    mlb: 16, nba: 11, nfl: 14,
+    nhl: 17, wnba: 11, ufc: 22,
   };
 
-  const league = LEAGUE_MAP[sport];
-  if (!league) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+  const sportId = SPORT_IDS[sport];
+  if (!sportId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
   const today = new Date().toISOString().split('T')[0];
   const cacheKey = `${sport}-${type || 'props'}-${today}`;
   if (memCache[cacheKey]) return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
 
-  const getRaw = (url) => new Promise((resolve, reject) => {
+  const get = (path) => new Promise((resolve, reject) => {
+    const url = `https://${BASE}/v4${path}`;
     https.get(url, {
-      headers: { 'Authorization': `Bearer ${API_KEY}`, 'Accept': 'application/json' }
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
     }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
@@ -34,111 +37,105 @@ exports.handler = async (event) => {
   });
 
   try {
-    if (type === 'games') {
-      const result = await getRaw(
-        `https://api.oddspapi.com/odds?apiKey=${API_KEY}&sport=${league}&markets=h2h,spreads,totals&oddsFormat=american`
-      );
-      if (result.status !== 200) throw new Error(`OddsPapi games ${result.status}: ${JSON.stringify(result.data)}`);
+    const now = new Date().toISOString();
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-      const raw = Array.isArray(result.data) ? result.data : (result.data?.data || []);
-      const games = raw.map(game => {
-        const book = game.bookmakers?.find(b => b.key === 'draftkings')
-          || game.bookmakers?.find(b => b.key === 'fanduel')
-          || game.bookmakers?.[0];
-        const h2h = book?.markets?.find(m => m.key === 'h2h');
-        const spread = book?.markets?.find(m => m.key === 'spreads');
-        const total = book?.markets?.find(m => m.key === 'totals');
-        return {
-          id: game.id,
-          homeTeam: game.home_team,
-          awayTeam: game.away_team,
-          startTime: game.commence_time,
-          homeML: h2h?.outcomes?.find(o => o.name === game.home_team)?.price || null,
-          awayML: h2h?.outcomes?.find(o => o.name === game.away_team)?.price || null,
-          homeSpread: spread?.outcomes?.find(o => o.name === game.home_team)?.point || null,
-          homeSpreadOdds: spread?.outcomes?.find(o => o.name === game.home_team)?.price || null,
-          awaySpread: spread?.outcomes?.find(o => o.name === game.away_team)?.point || null,
-          awaySpreadOdds: spread?.outcomes?.find(o => o.name === game.away_team)?.price || null,
-          total: total?.outcomes?.find(o => o.name === 'Over')?.point || null,
-          overOdds: total?.outcomes?.find(o => o.name === 'Over')?.price || null,
-          underOdds: total?.outcomes?.find(o => o.name === 'Under')?.price || null,
-          vendor: book?.key || 'oddspapi',
-        };
-      });
+    // Step 1: Get today's fixtures
+    const fixturesRes = await get(
+      `/fixtures?apiKey=${API_KEY}&sportId=${sportId}&from=${now}&to=${tomorrow}&hasOdds=true`
+    );
+    if (fixturesRes.status !== 200) throw new Error(`Fixtures ${fixturesRes.status}: ${JSON.stringify(fixturesRes.data).slice(0,200)}`);
+
+    const fixtures = Array.isArray(fixturesRes.data) ? fixturesRes.data : [];
+    if (fixtures.length === 0) return { statusCode: 200, headers, body: JSON.stringify([]) };
+
+    if (type === 'games') {
+      // Get game lines for each fixture
+      const games = [];
+      await Promise.allSettled(fixtures.slice(0, 10).map(async (f) => {
+        try {
+          const oddsRes = await get(`/odds?apiKey=${API_KEY}&fixtureId=${f.fixtureId}&oddsFormat=american`);
+          if (oddsRes.status !== 200) return;
+          const book = oddsRes.data?.bookmakerOdds?.draftkings || oddsRes.data?.bookmakerOdds?.fanduel || Object.values(oddsRes.data?.bookmakerOdds || {})[0];
+          if (!book) return;
+          const ml = book.markets?.['101']; // moneyline
+          const total = book.markets?.['102']; // total
+          games.push({
+            id: f.fixtureId,
+            homeTeam: f.participant1Name,
+            awayTeam: f.participant2Name,
+            startTime: f.startTime,
+            homeML: ml?.outcomes?.['101']?.players?.['0']?.price || null,
+            awayML: ml?.outcomes?.['103']?.players?.['0']?.price || null,
+            total: total?.outcomes?.['101']?.players?.['0']?.line || null,
+            overOdds: total?.outcomes?.['101']?.players?.['0']?.price || null,
+            underOdds: total?.outcomes?.['102']?.players?.['0']?.price || null,
+            vendor: 'oddspapi',
+          });
+        } catch { }
+      }));
       memCache[cacheKey] = games;
       return { statusCode: 200, headers, body: JSON.stringify(games) };
     }
 
-    // Player props
-    const eventsRes = await getRaw(`https://api.oddspapi.com/events?apiKey=${API_KEY}&sport=${league}`);
-    if (eventsRes.status !== 200) throw new Error(`OddsPapi events ${eventsRes.status}: ${JSON.stringify(eventsRes.data)}`);
+    // Player props — get odds with player prop markets
+    const allProps = [];
+    await Promise.allSettled(fixtures.slice(0, 6).map(async (f) => {
+      try {
+        const oddsRes = await get(`/odds?apiKey=${API_KEY}&fixtureId=${f.fixtureId}&oddsFormat=american&verbosity=3`);
+        if (oddsRes.status !== 200) return;
+        const bookmakers = oddsRes.data?.bookmakerOdds || {};
+        const book = bookmakers.draftkings || bookmakers.fanduel || Object.values(bookmakers)[0];
+        if (!book) return;
 
-    const events = Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data?.data || []);
-    const active = events.filter(e => {
-      const start = new Date(e.commence_time).getTime();
-      return start > Date.now() - 3 * 60 * 60 * 1000;
+        Object.entries(book.markets || {}).forEach(([marketId, market]) => {
+          Object.entries(market.outcomes || {}).forEach(([, outcome]) => {
+            Object.entries(outcome.players || {}).forEach(([, player]) => {
+              if (!player.playerName || player.price === null) return;
+              const line = player.line ?? 0;
+              if (line === 0) return;
+              const key = `${f.fixtureId}-${player.playerName}-${marketId}-${line}`;
+              allProps.push({
+                id: key,
+                playerId: '',
+                playerName: player.playerName,
+                team: '',
+                propType: market.marketName || marketId,
+                line,
+                overOdds: player.bookmakerOutcomeId === 'over' ? player.price : -110,
+                underOdds: player.bookmakerOutcomeId === 'under' ? player.price : -110,
+                gameId: f.fixtureId,
+                vendor: 'oddspapi',
+                homeTeam: f.participant1Name,
+                awayTeam: f.participant2Name,
+                startTime: f.startTime,
+              });
+            });
+          });
+        });
+      } catch { }
+    }));
+
+    // Pair over/under by player+market+line
+    const paired = new Map();
+    allProps.forEach(p => {
+      const key = `${p.gameId}-${p.playerName}-${p.propType}-${p.line}`;
+      if (!paired.has(key)) paired.set(key, { ...p, overOdds: -110, underOdds: -110 });
+      const entry = paired.get(key);
+      if (p.overOdds !== -110) entry.overOdds = p.overOdds;
+      if (p.underOdds !== -110) entry.underOdds = p.underOdds;
     });
 
-    if (active.length === 0) return { statusCode: 200, headers, body: JSON.stringify([]) };
+    const props = Array.from(paired.values()).filter(p => p.playerName && p.line > 0);
+    if (props.length === 0) {
+      // Return debug info
+      return { statusCode: 200, headers, body: JSON.stringify({ 
+        error: `No props found. Fixtures: ${fixtures.length}. Debug: ${JSON.stringify(fixtures[0]).slice(0,200)}` 
+      })};
+    }
 
-    const PROP_MARKETS = {
-      mlb: 'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
-      nba: 'player_points,player_rebounds,player_assists,player_threes',
-      nfl: 'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
-      nhl: 'player_shots_on_goal,player_saves,player_points',
-      wnba: 'player_points,player_rebounds,player_assists,player_threes',
-      ufc: 'player_method_of_victory,player_total_rounds',
-    };
-
-    const allProps = [];
-    await Promise.allSettled(
-      active.slice(0, 8).map(async (ev) => {
-        try {
-          const result = await getRaw(
-            `https://api.oddspapi.com/odds?apiKey=${API_KEY}&sport=${league}&eventIds=${ev.id}&markets=${PROP_MARKETS[sport]}&oddsFormat=american`
-          );
-          if (result.status !== 200) return;
-
-          const data = Array.isArray(result.data) ? result.data[0] : result.data?.data?.[0];
-          if (!data) return;
-
-          const book = data.bookmakers?.find(b => b.key === 'draftkings')
-            || data.bookmakers?.find(b => b.key === 'fanduel')
-            || data.bookmakers?.[0];
-          if (!book) return;
-
-          book.markets?.forEach(market => {
-            const playerMap = new Map();
-            market.outcomes?.forEach(outcome => {
-              const name = outcome.description;
-              if (!name) return;
-              if (!playerMap.has(name)) {
-                playerMap.set(name, {
-                  id: `${ev.id}-${market.key}-${name}`,
-                  playerId: '',
-                  playerName: name,
-                  team: outcome.team || '',
-                  propType: market.key,
-                  line: outcome.point ?? 0,
-                  overOdds: -110, underOdds: -110,
-                  gameId: ev.id, vendor: book.key,
-                  homeTeam: ev.home_team, awayTeam: ev.away_team,
-                  startTime: ev.commence_time,
-                });
-              }
-              const p = playerMap.get(name);
-              if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
-              if (outcome.name === 'Under') p.underOdds = outcome.price;
-            });
-            playerMap.forEach(p => { if (p.playerName) allProps.push(p); });
-          });
-        } catch { }
-      })
-    );
-
-    if (allProps.length === 0) throw new Error('No props returned from OddsPapi');
-    memCache[cacheKey] = allProps;
-    return { statusCode: 200, headers, body: JSON.stringify(allProps) };
+    memCache[cacheKey] = props;
+    return { statusCode: 200, headers, body: JSON.stringify(props) };
 
   } catch (err) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
