@@ -30,7 +30,6 @@ export function useRealTimeData(sport: Sport): UseRealTimeDataReturn {
     setError(null);
     setPropsError(null);
     setProps([]);
-    setAllProps([]);
 
     try {
       const today = new Date().toISOString().split('T')[0];
