@@ -49,7 +49,7 @@ exports.handler = async (event) => {
         oddsStatus: oddsRes.status,
         bookmakers: Object.keys(oddsRes.data?.bookmakerOdds || {}),
         marketIds: Object.keys(Object.values(oddsRes.data?.bookmakerOdds || {})[0]?.markets || {}),
-        sampleMarket: JSON.stringify(Object.entries(Object.values(odosRes.data?.bookmakerOdds || {})[0]?.markets || {})[0]).slice(0, 500),
+        sampleMarket: JSON.stringify(Object.entries(Object.values(oddsRes.data?.bookmakerOdds || {})[0]?.markets || {})[0]).slice(0, 500),
       })};
     }
 
