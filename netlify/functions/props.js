@@ -9,160 +9,159 @@ exports.handler = async (event) => {
   };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
-  const { sport, type } = event.queryStringParameters || {};
-  const ODDS_KEY = process.env.VITE_ODDS_API_KEY;
-  if (!ODDS_KEY) return { statusCode: 500, headers, body: JSON.stringify({ error: 'No Odds API key' }) };
+  const { sport } = event.queryStringParameters || {};
 
-  const SPORT_MAP = {
-    mlb:  'baseball_mlb',
-    nba:  'basketball_nba',
-    nfl:  'americanfootball_nfl',
-    nhl:  'icehockey_nhl',
-    wnba: 'basketball_wnba',
-    ufc:  'mma_mixed_martial_arts',
+  const DK_GROUPS = {
+    mlb: '84240', nba: '42648', nfl: '88808',
+    nhl: '42133', wnba: '42648', ufc: '9',
   };
 
-  const PROP_MARKETS = {
-    mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
-    nba:  'player_points,player_rebounds,player_assists,player_threes',
-    nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
-    nhl:  'player_shots_on_goal,player_saves,player_points',
-    wnba: 'player_points,player_rebounds,player_assists,player_threes',
-    ufc:  'player_method_of_victory,player_total_rounds',
-  };
+  const groupId = DK_GROUPS[sport];
+  if (!groupId) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
-  const oddsSport = SPORT_MAP[sport];
-  if (!oddsSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
-
+  // Cache per day — only fetch once per sport per day
   const today = new Date().toISOString().split('T')[0];
-  const cacheKey = `${sport}-${type || 'props'}-${today}`;
+  const cacheKey = `${sport}-${today}`;
   if (memCache[cacheKey]) {
+    console.log(`Cache hit: ${cacheKey}`);
     return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
   }
 
+  // Try DraftKings mobile API — different CORS policy than desktop
+  const DK_MOBILE_HOSTS = [
+    'mobile-api.draftkings.com',
+    'sportsbook.draftkings.com',
+  ];
+
   const get = (url) => new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    const req = https.request(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'DraftKings/1.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'x-dkwallet-version': '1.0',
+        'x-device-type': 'mobile',
+      }
     }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString()) }); }
-        catch(e) { reject(e); }
+        try {
+          resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString()) });
+        } catch(e) { reject(e); }
       });
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    req.end();
   });
 
   try {
-    // ── GAME LINES (moneyline, spread, total) ────────────────────────────
-    if (type === 'games') {
-      const result = await get(
-        `https://api.the-odds-api.com/v4/sports/${oddsSport}/odds?apiKey=${ODDS_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`
-      );
-      if (result.status !== 200) throw new Error(`Game odds ${result.status}: ${JSON.stringify(result.data)}`);
-
-      const games = (result.data || []).map(game => {
-        const book = game.bookmakers?.find(b => b.key === 'draftkings')
-          || game.bookmakers?.find(b => b.key === 'fanduel')
-          || game.bookmakers?.[0];
-
-        const h2h = book?.markets?.find(m => m.key === 'h2h');
-        const spread = book?.markets?.find(m => m.key === 'spreads');
-        const total = book?.markets?.find(m => m.key === 'totals');
-
-        const homeML = h2h?.outcomes?.find(o => o.name === game.home_team)?.price;
-        const awayML = h2h?.outcomes?.find(o => o.name === game.away_team)?.price;
-        const homeSpread = spread?.outcomes?.find(o => o.name === game.home_team);
-        const awaySpread = spread?.outcomes?.find(o => o.name === game.away_team);
-        const over = total?.outcomes?.find(o => o.name === 'Over');
-        const under = total?.outcomes?.find(o => o.name === 'Under');
-
-        return {
-          id: game.id,
-          homeTeam: game.home_team,
-          awayTeam: game.away_team,
-          startTime: game.commence_time,
-          homeML: homeML || null,
-          awayML: awayML || null,
-          homeSpread: homeSpread?.point || null,
-          homeSpreadOdds: homeSpread?.price || null,
-          awaySpread: awaySpread?.point || null,
-          awaySpreadOdds: awaySpread?.price || null,
-          total: over?.point || null,
-          overOdds: over?.price || null,
-          underOdds: under?.price || null,
-          vendor: book?.key || 'unknown',
-        };
-      });
-
-      memCache[cacheKey] = games;
-      return { statusCode: 200, headers, body: JSON.stringify(games) };
+    // Try mobile endpoint first
+    let result = null;
+    for (const host of DK_MOBILE_HOSTS) {
+      try {
+        result = await get(`https://${host}/sites/US-SB/api/v5/eventgroups/${groupId}?format=json`);
+        if (result.status === 200) break;
+      } catch { continue; }
     }
 
-    // ── PLAYER PROPS ─────────────────────────────────────────────────────
-    const evResult = await get(
-      `https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`
-    );
-    if (evResult.status !== 200) throw new Error(`Events ${evResult.status}: ${JSON.stringify(evResult.data)}`);
+    if (!result || result.status !== 200) throw new Error(`DK returned ${result?.status}`);
 
-    const events = Array.isArray(evResult.data) ? evResult.data : [];
-    const active = events.filter(e => new Date(e.commence_time).getTime() > Date.now() - 3 * 60 * 60 * 1000);
+    const propKeywords = ['player', 'batter', 'pitcher', 'points', 'rebounds', 'assists',
+      'passing', 'rushing', 'receiving', 'shots', 'saves', 'goals', 'hits', 'strikeout', 'total bases'];
+    const cats = result.data?.eventGroup?.offerCategories || [];
+    const propCats = cats.filter(c => propKeywords.some(k => (c.name || '').toLowerCase().includes(k)));
 
-    if (active.length === 0) {
-      memCache[cacheKey] = [];
-      return { statusCode: 200, headers, body: JSON.stringify([]) };
-    }
+    if (propCats.length === 0) throw new Error('No prop categories found');
 
     const allProps = [];
     await Promise.allSettled(
-      active.slice(0, 6).map(async (ev) => {
-        try {
-          const result = await get(
-            `https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${PROP_MARKETS[sport]}&oddsFormat=american`
-          );
-          if (result.status !== 200) return;
-
-          const book = result.data.bookmakers?.find(b => b.key === 'draftkings')
-            || result.data.bookmakers?.find(b => b.key === 'fanduel')
-            || result.data.bookmakers?.[0];
-          if (!book) return;
-
-          book.markets?.forEach(market => {
-            const playerMap = new Map();
-            market.outcomes?.forEach(outcome => {
-              const name = outcome.description;
-              if (!name) return;
-              if (!playerMap.has(name)) {
-                playerMap.set(name, {
-                  id: `${ev.id}-${market.key}-${name}`,
-                  playerId: '',
-                  playerName: name,
-                  team: outcome.team || '',
-                  propType: market.key,
-                  line: outcome.point ?? 0,
-                  overOdds: -110,
-                  underOdds: -110,
-                  gameId: ev.id,
-                  vendor: book.key,
-                  homeTeam: ev.home_team,
-                  awayTeam: ev.away_team,
-                  startTime: ev.commence_time,
-                });
+      propCats.slice(0, 8).map(async (cat) => {
+        const catId = cat.offerCategoryId;
+        await Promise.allSettled(
+          (cat.offerSubcategoryDescriptors || []).slice(0, 8).map(async (subcat) => {
+            const subcatId = subcat.offerSubcategoryId || subcat.subcategoryId;
+            if (!subcatId) return;
+            try {
+              for (const host of DK_MOBILE_HOSTS) {
+                try {
+                  const r = await get(`https://${host}/sites/US-SB/api/v5/eventgroups/${groupId}/categories/${catId}/subcategories/${subcatId}?format=json`);
+                  if (r.status === 200) {
+                    allProps.push(...parseDKProps(r.data, subcat.name || cat.name || ''));
+                    break;
+                  }
+                } catch { continue; }
               }
-              const p = playerMap.get(name);
-              if (outcome.name === 'Over') { p.overOdds = outcome.price; p.line = outcome.point ?? p.line; }
-              if (outcome.name === 'Under') p.underOdds = outcome.price;
-            });
-            playerMap.forEach(p => { if (p.playerName) allProps.push(p); });
-          });
-        } catch { }
+            } catch { }
+          })
+        );
       })
     );
 
-    memCache[cacheKey] = allProps;
-    return { statusCode: 200, headers, body: JSON.stringify(allProps) };
+    const seen = new Map();
+    allProps.forEach(p => {
+      const k = `${p.playerName}-${p.propType}-${p.line}`;
+      if (!seen.has(k)) seen.set(k, p);
+    });
+    const deduped = Array.from(seen.values());
+    if (deduped.length === 0) throw new Error('DK returned 0 props');
+
+    memCache[cacheKey] = deduped;
+    return { statusCode: 200, headers, body: JSON.stringify(deduped) };
 
   } catch (err) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+function parseDKProps(data, defaultPropType) {
+  const props = [];
+  try {
+    (data?.eventGroup?.offerCategories || []).forEach(cat => {
+      (cat?.offerSubcategoryDescriptors || []).forEach(subcat => {
+        const propType = subcat?.name || defaultPropType;
+        (subcat?.offerSubcategory?.offers || []).forEach(offerGroup => {
+          if (!Array.isArray(offerGroup)) return;
+          offerGroup.forEach(offer => {
+            const outcomes = offer?.outcomes || [];
+            if (outcomes.length < 2) return;
+            const playerName = offer?.participant || offer?.label || '';
+            if (!playerName || playerName.length < 2) return;
+            const over = outcomes.find(o => o?.label?.toLowerCase() === 'over');
+            const under = outcomes.find(o => o?.label?.toLowerCase() === 'under');
+            if (!over && !under) return;
+            const line = parseFloat(over?.line || under?.line || '0') || 0;
+            const overOdds = parseOdds(over?.oddsAmerican);
+            const underOdds = parseOdds(under?.oddsAmerican);
+            if (overOdds === 0 && underOdds === 0) return;
+            props.push({
+              id: `dk-${offer?.providerId || Math.random()}-${playerName}`,
+              playerId: '',
+              playerName: cleanName(playerName),
+              team: offer?.teamAbbreviation || '',
+              propType, line, overOdds, underOdds,
+              gameId: offer?.eventId?.toString() || '',
+              vendor: 'draftkings',
+            });
+          });
+        });
+      });
+    });
+  } catch { }
+  return props;
+}
+
+function parseOdds(raw) {
+  if (!raw) return 0;
+  const n = parseInt(raw.toString().replace(/[^-\d]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function cleanName(name) {
+  if (name.includes(',')) {
+    const parts = name.split(',').map(s => s.trim());
+    return `${parts[1]} ${parts[0]}`;
+  }
+  return name.trim();
+}
