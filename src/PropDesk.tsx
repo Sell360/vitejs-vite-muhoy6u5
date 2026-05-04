@@ -4,6 +4,7 @@ import { GameCard } from './components/GameCard';
 import { PropsList } from './components/PropsList';
 import { ParlayBuilder } from './components/ParlayBuilder';
 import type { Sport, PlayerProp } from './services/api';
+import { BetTracker } from './components/BetTracker';
 
 const SPORTS: { key: Sport; label: string; emoji: string }[] = [
   { key: 'mlb',  label: 'MLB',  emoji: '⚾' },
@@ -28,7 +29,7 @@ export default function Bet360() {
   const [loading, setLoading] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'parlay' | 'props'>('parlay');
-  const [mainTab, setMainTab] = useState<'games' | 'parlays'>('parlays');
+  const [mainTab, setMainTab] = useState<'games' | 'parlays' | 'tracker'>('parlays');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, fetchPropsForGame, lastUpdated } = useRealTimeData(sport);
@@ -181,6 +182,9 @@ export default function Bet360() {
           <button style={tabBtn(mainTab === 'parlays')} onClick={() => setMainTab('parlays')}>
             ⚡ Parlays {allProps.length > 0 ? `(${allProps.length})` : ''}
           </button>
+          <button style={tabBtn(mainTab === 'tracker')} onClick={() => setMainTab('tracker')}>
+            📒 Tracker
+          </button>
         </div>
 
         {/* Desktop: side by side | Mobile: tabbed */}
@@ -231,6 +235,14 @@ export default function Bet360() {
           </div>
         </div>
       </div>
+
+      {/* Bet Tracker — full width when active */}
+      {mainTab === 'tracker' && (
+        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 16px 24px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: C.muted, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '16px' }}>Bet Tracker</div>
+          <BetTracker />
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', padding: '20px 16px', borderTop: `1px solid ${C.border}`, fontSize: '12px', color: C.dim, marginTop: '24px' }}>
         BET360 — MLB · NBA · NFL · NHL · WNBA · UFC · Bet responsibly
