@@ -68,7 +68,7 @@ Analyze using cascade edge methodology.`);
     setMessages(newMessages);
     setTimeout(() => {
       const reply = `━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PROP DESK ANALYSIS (${sport.toUpperCase()})
+BET360 ANALYSIS (${sport.toUpperCase()})
 
 DATA STATUS:
 • Games Today: ${games.length}
@@ -100,7 +100,7 @@ Bet responsibly.`;
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0f1a", color: "#e0f0ff", fontFamily: "system-ui, sans-serif", padding: "20px" }}>
-      <h1 style={{ textAlign: "center", color: "#4fc3f7", marginBottom: "20px" }}>PROP DESK</h1>
+      <h1 style={{ textAlign: "center", color: "#4fc3f7", marginBottom: "20px" }}>BET360</h1>
 
       {/* Sport selector */}
       <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: "20px", flexWrap: "wrap" }}>
