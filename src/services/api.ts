@@ -1,80 +1,44 @@
 export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc';
 
 export interface GameData {
-  id: string;
-  homeTeam: string;
-  awayTeam: string;
-  startTime: string;
+  id: string; homeTeam: string; awayTeam: string; startTime: string;
   weather?: { temperature: number; windSpeed: number; conditions: string; };
   umpire?: { name: string; strikeZoneTendency: 'tight' | 'wide' | 'normal'; };
-  venue: string;
-  status: 'scheduled' | 'live' | 'final';
-  homeScore?: number;
-  awayScore?: number;
-  inning?: string;
+  venue: string; status: 'scheduled' | 'live' | 'final';
+  homeScore?: number; awayScore?: number; inning?: string;
 }
 
 export interface PlayerProp {
-  id: string;
-  playerId: string;
-  playerName: string;
-  team: string;
-  propType: string;
-  line: number;
-  overOdds: number;
-  underOdds: number;
-  gameId: string;
-  vendor?: string;
-  homeTeam?: string;
-  awayTeam?: string;
-  startTime?: string;
-  injured?: boolean;
+  id: string; playerId: string; playerName: string; team: string;
+  propType: string; line: number; overOdds: number; underOdds: number;
+  gameId: string; vendor?: string; homeTeam?: string; awayTeam?: string;
+  startTime?: string; injured?: boolean;
   impliedProb?: { over: number; under: number; vig: number; } | null;
-  sharpFlag?: boolean;
-  kalshiEdge?: null;
-  isGameLine?: boolean;
+  sharpFlag?: boolean; kalshiEdge?: null; isGameLine?: boolean;
 }
 
 export interface GameLine {
-  id: string;
-  homeTeam: string;
-  awayTeam: string;
-  startTime: string;
-  homeML: number | null;
-  awayML: number | null;
-  homeSpread: number | null;
-  homeSpreadOdds: number | null;
-  awaySpread: number | null;
-  awaySpreadOdds: number | null;
-  total: number | null;
-  overOdds: number | null;
-  underOdds: number | null;
+  id: string; homeTeam: string; awayTeam: string; startTime: string;
+  homeML: number | null; awayML: number | null;
+  homeSpread: number | null; homeSpreadOdds: number | null;
+  awaySpread: number | null; awaySpreadOdds: number | null;
+  total: number | null; overOdds: number | null; underOdds: number | null;
   vendor: string;
 }
 
 export interface WNBAGameData {
-  id: string;
-  homeTeam: string;
-  awayTeam: string;
-  startTime: string;
+  id: string; homeTeam: string; awayTeam: string; startTime: string;
   referee?: { name: string; foulTendency: 'strict' | 'lenient' | 'normal'; };
-  venue: string;
-  status: 'scheduled' | 'live' | 'final';
-  pace?: number;
-  homeScore?: number;
-  awayScore?: number;
+  venue: string; status: 'scheduled' | 'live' | 'final';
+  pace?: number; homeScore?: number; awayScore?: number;
 }
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const WX_KEY = import.meta.env.VITE_WEATHER_API_KEY || '';
 
 const ESPN_PATHS: Record<Sport, string> = {
-  mlb:  'baseball/mlb',
-  wnba: 'basketball/wnba',
-  nba:  'basketball/nba',
-  nfl:  'football/nfl',
-  nhl:  'hockey/nhl',
-  ufc:  'mma/ufc',
+  mlb: 'baseball/mlb', wnba: 'basketball/wnba', nba: 'basketball/nba',
+  nfl: 'football/nfl', nhl: 'hockey/nhl', ufc: 'mma/ufc',
 };
 
 const cache: Record<string, { data: any; ts: number }> = {};
@@ -98,31 +62,28 @@ class ApiService {
         }));
       }
       return games;
-    } catch (err) {
-      console.warn(`${sport} games failed:`, err);
-      return [];
-    }
+    } catch (err) { console.warn(`${sport} games failed:`, err); return []; }
   }
 
   async getMLBGames(date: string)  { return this.getGames('mlb', date) as Promise<GameData[]>; }
   async getWNBAGames(date: string) { return this.getGames('wnba', date) as Promise<WNBAGameData[]>; }
 
-  // Props via Netlify function
   async getAllProps(sport: Sport): Promise<PlayerProp[]> {
     const ck = `props-${sport}`;
     const hit = cache[ck];
-    // Only use cache if it has actual data
     if (hit && hit.data.length > 0 && Date.now() - hit.ts < TTL) return hit.data;
 
-    const res = await fetch(`/api/props?sport=${sport}`);
-    if (!res.ok) throw new Error(`Props function returned ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    if (!Array.isArray(data) || data.length === 0) throw new Error('No props returned');
-
-    const enriched = data.map((p: any) => this.enrichProp(p));
-    cache[ck] = { data: enriched, ts: Date.now() };
-    return enriched;
+    try {
+      const res = await fetch(`/api/props?sport=${sport}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error(data.error || 'Invalid response');
+      const enriched = data.map((p: any) => this.enrichProp(p));
+      if (enriched.length > 0) cache[ck] = { data: enriched, ts: Date.now() };
+      return enriched;
+    } catch (err) {
+      throw new Error(`Props unavailable: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   async getGameLines(sport: Sport): Promise<GameLine[]> {
@@ -131,16 +92,13 @@ class ApiService {
     if (hit && Date.now() - hit.ts < TTL) return hit.data;
     try {
       const res = await fetch(`/api/props?sport=${sport}&type=games`);
-      if (!res.ok) throw new Error(`Game lines ${res.status}`);
+      if (!res.ok) throw new Error(`${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const lines = Array.isArray(data) ? data : [];
       cache[ck] = { data: lines, ts: Date.now() };
       return lines;
-    } catch (err) {
-      console.warn('Game lines failed:', err);
-      return [];
-    }
+    } catch (err) { console.warn('Game lines failed:', err); return []; }
   }
 
   gameLinesToProps(lines: GameLine[]): PlayerProp[] {
@@ -159,61 +117,10 @@ class ApiService {
   async getMLBPlayerProps(_id: string)     { return this.getAllProps('mlb'); }
   async getWNBAPlayerProps(_id: string)    { return this.getAllProps('wnba'); }
 
-  private parseDKProps(data: any, defaultPropType: string): PlayerProp[] {
-    const props: PlayerProp[] = [];
-    try {
-      (data?.eventGroup?.offerCategories || []).forEach((cat: any) => {
-        (cat?.offerSubcategoryDescriptors || []).forEach((subcat: any) => {
-          const propType = subcat?.name || defaultPropType;
-          (subcat?.offerSubcategory?.offers || []).forEach((offerGroup: any) => {
-            if (!Array.isArray(offerGroup)) return;
-            offerGroup.forEach((offer: any) => {
-              const outcomes = offer?.outcomes || [];
-              if (outcomes.length < 2) return;
-              const playerName = offer?.participant || offer?.label || '';
-              if (!playerName || playerName.length < 2) return;
-              const over = outcomes.find((o: any) => o?.label?.toLowerCase() === 'over');
-              const under = outcomes.find((o: any) => o?.label?.toLowerCase() === 'under');
-              if (!over && !under) return;
-              const line = parseFloat(over?.line || under?.line || '0') || 0;
-              const overOdds = this.parseOdds(over?.oddsAmerican);
-              const underOdds = this.parseOdds(under?.oddsAmerican);
-              if (overOdds === 0 && underOdds === 0) return;
-              props.push({
-                id: `dk-${offer?.providerId || Math.random()}-${playerName}`,
-                playerId: '',
-                playerName: this.cleanName(playerName),
-                team: offer?.teamAbbreviation || '',
-                propType, line, overOdds, underOdds,
-                gameId: offer?.eventId?.toString() || '',
-                vendor: 'draftkings',
-              });
-            });
-          });
-        });
-      });
-    } catch { }
-    return props;
-  }
-
-  private parseOdds(raw: any): number {
-    if (!raw) return 0;
-    const n = parseInt(raw.toString().replace(/[^-\d]/g, ''));
-    return isNaN(n) ? 0 : n;
-  }
-
-  private cleanName(name: string): string {
-    if (name.includes(',')) {
-      const parts = name.split(',').map((s: string) => s.trim());
-      return `${parts[1]} ${parts[0]}`;
-    }
-    return name.trim();
-  }
-
   private enrichProp(p: any): PlayerProp {
     const ovDec = p.overOdds > 0 ? p.overOdds / 100 + 1 : 100 / Math.abs(p.overOdds || 110) + 1;
     const unDec = p.underOdds > 0 ? p.underOdds / 100 + 1 : 100 / Math.abs(p.underOdds || 110) + 1;
-    return { ...p, impliedProb: { over: Math.round((1 / ovDec) * 100), under: Math.round((1 / unDec) * 100), vig: Math.round(((1 / ovDec) + (1 / unDec) - 1) * 100) }, injured: false, sharpFlag: false, kalshiEdge: null };
+    return { ...p, impliedProb: { over: Math.round((1/ovDec)*100), under: Math.round((1/unDec)*100), vig: Math.round(((1/ovDec)+(1/unDec)-1)*100) }, injured: false, sharpFlag: false, kalshiEdge: null };
   }
 
   private transformESPN(events: any[]): GameData[] {
