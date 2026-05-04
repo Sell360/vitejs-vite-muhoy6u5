@@ -107,11 +107,12 @@ class ApiService {
   async getMLBGames(date: string)  { return this.getGames('mlb', date) as Promise<GameData[]>; }
   async getWNBAGames(date: string) { return this.getGames('wnba', date) as Promise<WNBAGameData[]>; }
 
-  // Props via Netlify proxy — routes through betz360.com/dk/ to bypass CORS
+  // Props via Netlify function
   async getAllProps(sport: Sport): Promise<PlayerProp[]> {
     const ck = `props-${sport}`;
     const hit = cache[ck];
-    if (hit && Date.now() - hit.ts < TTL) return hit.data;
+    // Only use cache if it has actual data
+    if (hit && hit.data.length > 0 && Date.now() - hit.ts < TTL) return hit.data;
 
     const res = await fetch(`/api/props?sport=${sport}`);
     if (!res.ok) throw new Error(`Props function returned ${res.status}`);
