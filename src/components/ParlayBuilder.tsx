@@ -230,17 +230,20 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
   if (props.length === 0) return [];
 
   const scheduledGameIds = new Set(games.filter(g => g.status === 'scheduled').map(g => g.id));
-  const eligible = props.filter(p => scheduledGameIds.has(p.gameId) && !p.injured);
+  // Include game lines (isGameLine) even if gameId doesn't match ESPN game IDs
+  const eligible = props.filter(p => !p.injured && (p.isGameLine || scheduledGameIds.has(p.gameId)));
   if (eligible.length === 0) return [];
 
-  // Score every leg
+  // Score every leg — lower threshold to 40 to generate more options
   const allLegs: ParlayLeg[] = [];
   eligible.forEach(prop => {
     (['over', 'under'] as const).forEach(pick => {
       const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
       if (!odds || odds === 0) return;
+      // Game lines only have overOdds set (the team/side ML)
+      if (prop.isGameLine && pick === 'under' && !prop.underOdds) return;
       const { confidence, reason, edgeFlags } = scoreLeg(prop, pick, games, sport);
-      if (confidence >= 50) allLegs.push({ prop, pick, odds, confidence, reason, edgeFlags });
+      if (confidence >= 40) allLegs.push({ prop, pick, odds, confidence, reason, edgeFlags });
     });
   });
 

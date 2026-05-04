@@ -43,12 +43,25 @@ export function useRealTimeData(sport: Sport): UseRealTimeDataReturn {
       setLoading(false);
     }
 
-    // Load props separately — never block games from showing
+    // Load player props + game lines in parallel
     setPropsLoading(true);
     try {
-      const p = await apiService.getAllProps(sport);
-      setAllProps(p);
-      if (p.length === 0) setPropsError('No props available from DraftKings right now. Try refreshing.');
+      const [playerProps, gameLines] = await Promise.allSettled([
+        apiService.getAllProps(sport),
+        apiService.getGameLines(sport),
+      ]);
+
+      const pp = playerProps.status === 'fulfilled' ? playerProps.value : [];
+      const gl = gameLines.status === 'fulfilled'
+        ? apiService.gameLinesToProps(gameLines.value)
+        : [];
+
+      const combined = [...pp, ...gl];
+
+      if (combined.length === 0) {
+        setPropsError('No props or lines available right now. Try refreshing.');
+      }
+      setAllProps(combined);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setPropsError(`Props unavailable: ${msg}`);
@@ -62,13 +75,7 @@ export function useRealTimeData(sport: Sport): UseRealTimeDataReturn {
       const all = await apiService.getAllProps(sport);
       const gameProps = all.filter(p => p.gameId === gameId);
       setProps(gameProps.length > 0 ? gameProps : all);
-      setAllProps(prev => {
-        const existing = new Set(prev.map(x => x.id));
-        return [...prev, ...all.filter(x => !existing.has(x.id))];
-      });
-    } catch (err) {
-      console.warn('fetchPropsForGame failed:', err);
-    }
+    } catch { }
   }, [sport]);
 
   const refreshData = useCallback(() => { fetchData(); }, [fetchData]);

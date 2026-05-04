@@ -25,10 +25,31 @@ export interface PlayerProp {
   underOdds: number;
   gameId: string;
   vendor?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  startTime?: string;
   injured?: boolean;
   impliedProb?: { over: number; under: number; vig: number; } | null;
   sharpFlag?: boolean;
   kalshiEdge?: null;
+  isGameLine?: boolean;
+}
+
+export interface GameLine {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  startTime: string;
+  homeML: number | null;
+  awayML: number | null;
+  homeSpread: number | null;
+  homeSpreadOdds: number | null;
+  awaySpread: number | null;
+  awaySpreadOdds: number | null;
+  total: number | null;
+  overOdds: number | null;
+  underOdds: number | null;
+  vendor: string;
 }
 
 export interface WNBAGameData {
@@ -56,7 +77,7 @@ const ESPN_PATHS: Record<Sport, string> = {
   ufc:  'mma/ufc',
 };
 
-const cache: Record<string, { data: PlayerProp[]; ts: number }> = {};
+const cache: Record<string, { data: any; ts: number }> = {};
 const TTL = 8 * 60 * 1000;
 
 class ApiService {
@@ -86,7 +107,6 @@ class ApiService {
   async getMLBGames(date: string)  { return this.getGames('mlb', date) as Promise<GameData[]>; }
   async getWNBAGames(date: string) { return this.getGames('wnba', date) as Promise<WNBAGameData[]>; }
 
-  // Props go through Netlify function which calls DraftKings server-side (no CORS block)
   async getAllProps(sport: Sport): Promise<PlayerProp[]> {
     const ck = `props-${sport}`;
     const hit = cache[ck];
@@ -101,6 +121,69 @@ class ApiService {
     const enriched = data.map((p: any) => this.enrichProp(p));
     cache[ck] = { data: enriched, ts: Date.now() };
     return enriched;
+  }
+
+  async getGameLines(sport: Sport): Promise<GameLine[]> {
+    const ck = `gamelines-${sport}`;
+    const hit = cache[ck];
+    if (hit && Date.now() - hit.ts < TTL) return hit.data;
+
+    try {
+      const res = await fetch(`/api/props?sport=${sport}&type=games`);
+      if (!res.ok) throw new Error(`Game lines ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const lines = Array.isArray(data) ? data : [];
+      cache[ck] = { data: lines, ts: Date.now() };
+      return lines;
+    } catch (err) {
+      console.warn('Game lines failed:', err);
+      return [];
+    }
+  }
+
+  // Convert game lines into PlayerProp format so parlay builder can use them
+  gameLinesToProps(lines: GameLine[]): PlayerProp[] {
+    const props: PlayerProp[] = [];
+    lines.forEach(line => {
+      if (line.homeML) props.push({
+        id: `gl-${line.id}-homeML`,
+        playerId: '', playerName: line.homeTeam,
+        team: line.homeTeam, propType: 'Moneyline',
+        line: 0, overOdds: line.homeML, underOdds: 0,
+        gameId: line.id, vendor: line.vendor,
+        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
+        startTime: line.startTime, isGameLine: true,
+      });
+      if (line.awayML) props.push({
+        id: `gl-${line.id}-awayML`,
+        playerId: '', playerName: line.awayTeam,
+        team: line.awayTeam, propType: 'Moneyline',
+        line: 0, overOdds: line.awayML, underOdds: 0,
+        gameId: line.id, vendor: line.vendor,
+        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
+        startTime: line.startTime, isGameLine: true,
+      });
+      if (line.total && line.overOdds) props.push({
+        id: `gl-${line.id}-over`,
+        playerId: '', playerName: `${line.awayTeam} @ ${line.homeTeam}`,
+        team: '', propType: 'Game Total',
+        line: line.total, overOdds: line.overOdds, underOdds: line.underOdds || -110,
+        gameId: line.id, vendor: line.vendor,
+        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
+        startTime: line.startTime, isGameLine: true,
+      });
+      if (line.homeSpread && line.homeSpreadOdds) props.push({
+        id: `gl-${line.id}-spread`,
+        playerId: '', playerName: `${line.homeTeam} ${line.homeSpread > 0 ? '+' : ''}${line.homeSpread}`,
+        team: line.homeTeam, propType: 'Spread',
+        line: line.homeSpread, overOdds: line.homeSpreadOdds, underOdds: line.awaySpreadOdds || -110,
+        gameId: line.id, vendor: line.vendor,
+        homeTeam: line.homeTeam, awayTeam: line.awayTeam,
+        startTime: line.startTime, isGameLine: true,
+      });
+    });
+    return props;
   }
 
   async getAllMLBProps(_g: GameData[])      { return this.getAllProps('mlb'); }

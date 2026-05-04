@@ -1,6 +1,5 @@
 const https = require('https');
 
-// Simple file-based cache to persist across function calls within same day
 const memCache = {};
 
 exports.handler = async (event) => {
@@ -10,9 +9,8 @@ exports.handler = async (event) => {
   };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
-  const { sport } = event.queryStringParameters || {};
+  const { sport, type } = event.queryStringParameters || {};
   const ODDS_KEY = process.env.VITE_ODDS_API_KEY;
-
   if (!ODDS_KEY) return { statusCode: 500, headers, body: JSON.stringify({ error: 'No Odds API key' }) };
 
   const SPORT_MAP = {
@@ -24,7 +22,7 @@ exports.handler = async (event) => {
     ufc:  'mma_mixed_martial_arts',
   };
 
-  const MARKETS = {
+  const PROP_MARKETS = {
     mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
     nba:  'player_points,player_rebounds,player_assists,player_threes',
     nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
@@ -36,11 +34,9 @@ exports.handler = async (event) => {
   const oddsSport = SPORT_MAP[sport];
   if (!oddsSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
-  // Check memory cache — only fetch once per sport per day
   const today = new Date().toISOString().split('T')[0];
-  const cacheKey = `${sport}-${today}`;
+  const cacheKey = `${sport}-${type || 'props'}-${today}`;
   if (memCache[cacheKey]) {
-    console.log(`Cache hit for ${cacheKey}`);
     return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
   }
 
@@ -58,11 +54,56 @@ exports.handler = async (event) => {
   });
 
   try {
-    // Step 1: get events (1 credit)
+    // ── GAME LINES (moneyline, spread, total) ────────────────────────────
+    if (type === 'games') {
+      const result = await get(
+        `https://api.the-odds-api.com/v4/sports/${oddsSport}/odds?apiKey=${ODDS_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`
+      );
+      if (result.status !== 200) throw new Error(`Game odds ${result.status}: ${JSON.stringify(result.data)}`);
+
+      const games = (result.data || []).map(game => {
+        const book = game.bookmakers?.find(b => b.key === 'draftkings')
+          || game.bookmakers?.find(b => b.key === 'fanduel')
+          || game.bookmakers?.[0];
+
+        const h2h = book?.markets?.find(m => m.key === 'h2h');
+        const spread = book?.markets?.find(m => m.key === 'spreads');
+        const total = book?.markets?.find(m => m.key === 'totals');
+
+        const homeML = h2h?.outcomes?.find(o => o.name === game.home_team)?.price;
+        const awayML = h2h?.outcomes?.find(o => o.name === game.away_team)?.price;
+        const homeSpread = spread?.outcomes?.find(o => o.name === game.home_team);
+        const awaySpread = spread?.outcomes?.find(o => o.name === game.away_team);
+        const over = total?.outcomes?.find(o => o.name === 'Over');
+        const under = total?.outcomes?.find(o => o.name === 'Under');
+
+        return {
+          id: game.id,
+          homeTeam: game.home_team,
+          awayTeam: game.away_team,
+          startTime: game.commence_time,
+          homeML: homeML || null,
+          awayML: awayML || null,
+          homeSpread: homeSpread?.point || null,
+          homeSpreadOdds: homeSpread?.price || null,
+          awaySpread: awaySpread?.point || null,
+          awaySpreadOdds: awaySpread?.price || null,
+          total: over?.point || null,
+          overOdds: over?.price || null,
+          underOdds: under?.price || null,
+          vendor: book?.key || 'unknown',
+        };
+      });
+
+      memCache[cacheKey] = games;
+      return { statusCode: 200, headers, body: JSON.stringify(games) };
+    }
+
+    // ── PLAYER PROPS ─────────────────────────────────────────────────────
     const evResult = await get(
       `https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`
     );
-    if (evResult.status !== 200) throw new Error(`Events API ${evResult.status}: ${JSON.stringify(evResult.data)}`);
+    if (evResult.status !== 200) throw new Error(`Events ${evResult.status}: ${JSON.stringify(evResult.data)}`);
 
     const events = Array.isArray(evResult.data) ? evResult.data : [];
     const active = events.filter(e => new Date(e.commence_time).getTime() > Date.now() - 3 * 60 * 60 * 1000);
@@ -72,13 +113,12 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify([]) };
     }
 
-    // Step 2: fetch props for each event (1 credit each — limit to 6 games max)
     const allProps = [];
     await Promise.allSettled(
       active.slice(0, 6).map(async (ev) => {
         try {
           const result = await get(
-            `https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${MARKETS[sport]}&oddsFormat=american`
+            `https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${PROP_MARKETS[sport]}&oddsFormat=american`
           );
           if (result.status !== 200) return;
 
@@ -119,7 +159,6 @@ exports.handler = async (event) => {
       })
     );
 
-    // Cache result for the day
     memCache[cacheKey] = allProps;
     return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
