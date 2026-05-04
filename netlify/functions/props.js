@@ -27,20 +27,35 @@ exports.handler = async (event) => {
   });
 
   try {
-    const result = await getRaw(
-      `https://api.sharpapi.io/api/v1/odds?league=${league}&market_type=player_prop&per_page=200`
-    );
+    // Get all data and see what market types exist
+    const result = await getRaw(`https://api.sharpapi.io/api/v1/odds?league=${league}&per_page=200`);
     if (result.status !== 200) throw new Error(`SharpAPI ${result.status}: ${JSON.stringify(result.data)}`);
 
     const raw = Array.isArray(result.data) ? result.data : (result.data?.data || []);
     if (raw.length === 0) throw new Error('No data returned');
 
-    // Return sample to see actual field structure
-    const sample = raw.slice(0, 3);
+    // Get unique market types to see what's available
+    const marketTypes = [...new Set(raw.map(r => r.market_type))];
+    
+    // Filter for today's games only (not futures)
+    const todayItems = raw.filter(item => {
+      const start = new Date(item.event_start_time);
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return start >= now - 4 * 60 * 60 * 1000 && start <= tomorrow;
+    });
+
+    // Show what we have
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ debug: true, count: raw.length, sample })
+      body: JSON.stringify({ 
+        marketTypes,
+        totalCount: raw.length,
+        todayCount: todayItems.length,
+        todaySample: todayItems.slice(0, 2)
+      })
     };
 
   } catch (err) {
