@@ -9,129 +9,145 @@ exports.handler = async (event) => {
 
   const { sport } = event.queryStringParameters || {};
 
-  const AN_SPORTS = {
-    mlb: 'baseball', nba: 'basketball', nfl: 'football',
-    nhl: 'hockey', wnba: 'wnba', ufc: 'mma',
+  const SPORT_PATHS = {
+    mlb:  { site: 'baseball/mlb',    core: 'baseball/leagues/mlb' },
+    nba:  { site: 'basketball/nba',  core: 'basketball/leagues/nba' },
+    nfl:  { site: 'football/nfl',    core: 'football/leagues/nfl' },
+    nhl:  { site: 'hockey/nhl',      core: 'hockey/leagues/nhl' },
+    wnba: { site: 'basketball/wnba', core: 'basketball/leagues/wnba' },
   };
 
-  const anSport = AN_SPORTS[sport];
-  if (!anSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+  const paths = SPORT_PATHS[sport];
+  if (!paths) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
 
   const get = (url) => new Promise((resolve, reject) => {
     https.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'en-US,en;q=0.9',
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
     }, (res) => {
-      let data = '';
-      res.on('data', c => data += c);
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
-        if (res.statusCode !== 200) return reject(new Error(`${res.statusCode}: ${data.slice(0,200)}`));
-        try { resolve(JSON.parse(data)); } catch(e) { reject(e); }
+        try { resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString()) }); }
+        catch(e) { reject(e); }
       });
     }).on('error', reject);
   });
 
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    
+    // Get today's games
+    const scoreRes = await get(`https://site.api.espn.com/apis/site/v2/sports/${paths.site}/scoreboard?dates=${today}&limit=20`);
+    const events = scoreRes.data?.events || [];
+    if (events.length === 0) return { statusCode: 200, headers, body: JSON.stringify([]) };
 
-    // Action Network player props endpoint
-    const data = await get(
-      `https://api.actionnetwork.com/web/v1/player-props?sport=${anSport}&date=${today}`
-    );
+    const allProps = [];
 
-    const props = parseAN(data, sport);
-    if (props.length > 0) return { statusCode: 200, headers, body: JSON.stringify(props) };
-    throw new Error('Action Network returned 0 props');
+    // For each game get ESPN odds and player stats
+    await Promise.allSettled(events.map(async (ev) => {
+      const eventId = ev.id;
+      const comp = ev.competitions?.[0];
+      const home = comp?.competitors?.find(c => c.homeAway === 'home');
+      const away = comp?.competitors?.find(c => c.homeAway === 'away');
+      const homeTeam = home?.team?.abbreviation || '';
+      const awayTeam = away?.team?.abbreviation || '';
 
-  } catch(anErr) {
-    // Fallback: try ESPN BET player props
-    try {
-      const espnSports = {
-        mlb: 'baseball/mlb', nba: 'basketball/nba', nfl: 'football/nfl',
-        nhl: 'hockey/nhl', wnba: 'basketball/wnba',
-      };
-      const espnPath = espnSports[sport];
-      if (!espnPath) throw new Error('No ESPN path');
-
-      const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const scoreData = await get(
-        `https://site.api.espn.com/apis/site/v2/sports/${espnPath}/scoreboard?dates=${today}&limit=20`
-      );
-
-      const events = scoreData?.events || [];
-      const props = [];
-
-      await Promise.allSettled(events.slice(0, 5).map(async (ev) => {
-        try {
-          const oddsData = await get(
-            `https://sports.core.api.espn.com/v2/sports/${espnPath.split('/')[0]}/leagues/${espnPath.split('/')[1]}/events/${ev.id}/competitions/${ev.id}/predictor`
-          );
-          // Extract any available player data
-          const home = oddsData?.homeTeam;
-          const away = oddsData?.awayTeam;
-          if (home?.statistics) {
-            home.statistics.splits?.categories?.forEach((cat) => {
-              cat.stats?.forEach((stat) => {
-                if (stat.value > 0) {
-                  props.push({
-                    id: `espn-${ev.id}-${home.id}-${stat.name}`,
-                    playerId: home.id,
-                    playerName: home.team?.displayName || 'Unknown',
-                    team: home.team?.abbreviation || '',
-                    propType: stat.displayName || stat.name,
-                    line: parseFloat(stat.value) || 0,
-                    overOdds: -110,
-                    underOdds: -110,
-                    gameId: ev.id,
-                    vendor: 'espn',
-                  });
-                }
+      try {
+        // Get player props from ESPN core API
+        const propsRes = await get(
+          `https://sports.core.api.espn.com/v2/sports/${paths.core.split('/')[0]}/leagues/${paths.core.split('/')[2]}/events/${eventId}/competitions/${eventId}/odds`
+        );
+        
+        if (propsRes.status === 200 && propsRes.data?.items) {
+          propsRes.data.items.forEach(item => {
+            // Get player props from each bookmaker
+            const playerProps = item?.playerProps || item?.prop_bets || [];
+            playerProps.forEach(prop => {
+              const name = prop.athlete?.displayName || prop.playerName || '';
+              if (!name) return;
+              allProps.push({
+                id: `espn-${eventId}-${name}-${prop.stat}`,
+                playerId: prop.athlete?.id || '',
+                playerName: name,
+                team: prop.athlete?.team?.abbreviation || '',
+                propType: prop.stat || prop.type || '',
+                line: parseFloat(prop.line || prop.value || 0),
+                overOdds: parseInt(prop.overOdds || prop.over || -110),
+                underOdds: parseInt(prop.underOdds || prop.under || -110),
+                gameId: eventId,
+                vendor: item.provider?.name || 'espn',
+                homeTeam,
+                awayTeam,
               });
             });
-          }
-        } catch { }
-      }));
+          });
+        }
+      } catch { }
 
-      if (props.length > 0) return { statusCode: 200, headers, body: JSON.stringify(props) };
-      throw new Error('ESPN also returned 0 props');
+      // Also pull player stats for context
+      try {
+        const summaryRes = await get(
+          `https://site.web.api.espn.com/apis/site/v2/sports/${paths.site}/summary?event=${eventId}`
+        );
+        if (summaryRes.status === 200) {
+          const boxscore = summaryRes.data?.boxscore;
+          const players = boxscore?.players || [];
+          players.forEach(teamData => {
+            const team = teamData.team?.abbreviation || '';
+            teamData.statistics?.forEach(statGroup => {
+              statGroup.athletes?.forEach(athlete => {
+                const name = athlete.athlete?.displayName || '';
+                if (!name) return;
+                const labels = statGroup.labels || [];
+                const stats = athlete.stats || [];
+                labels.forEach((label, i) => {
+                  const val = parseFloat(stats[i]);
+                  if (!val || val <= 0) return;
+                  // Only include meaningful stat types
+                  const validStats = ['H', 'HR', 'RBI', 'K', 'PTS', 'REB', 'AST', 'SOG', 'G', 'A'];
+                  if (!validStats.includes(label)) return;
+                  allProps.push({
+                    id: `espn-live-${eventId}-${name}-${label}`,
+                    playerId: athlete.athlete?.id || '',
+                    playerName: name,
+                    team,
+                    propType: formatStatLabel(label),
+                    line: val,
+                    overOdds: -110,
+                    underOdds: -110,
+                    gameId: eventId,
+                    vendor: 'espn-live',
+                    homeTeam,
+                    awayTeam,
+                  });
+                });
+              });
+            });
+          });
+        }
+      } catch { }
+    }));
 
-    } catch(espnErr) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ error: `AN: ${anErr.message} | ESPN: ${espnErr.message}` })
-      };
-    }
+    // Deduplicate
+    const seen = new Map();
+    allProps.forEach(p => {
+      const k = `${p.playerName}-${p.propType}-${p.line}`;
+      if (!seen.has(k)) seen.set(k, p);
+    });
+    const deduped = Array.from(seen.values()).filter(p => p.playerName && p.line > 0);
+
+    return { statusCode: 200, headers, body: JSON.stringify(deduped) };
+
+  } catch (err) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
 
-function parseAN(data, sport) {
-  const props = [];
-  try {
-    const playerProps = data?.player_props || data?.props || data?.data || [];
-    playerProps.forEach((p) => {
-      const playerName = p.player?.full_name || p.player_name || p.name || '';
-      if (!playerName) return;
-      const line = parseFloat(p.value || p.line || p.ou_line || 0);
-      if (!line) return;
-      const overOdds = parseInt(p.over_odds || p.ml_over || -110);
-      const underOdds = parseInt(p.under_odds || p.ml_under || -110);
-      props.push({
-        id: `an-${p.id || Math.random()}`,
-        playerId: p.player?.id?.toString() || '',
-        playerName,
-        team: p.player?.team?.abbr || p.team || '',
-        propType: p.type?.name || p.prop_type || p.stat_type || '',
-        line,
-        overOdds: isNaN(overOdds) ? -110 : overOdds,
-        underOdds: isNaN(underOdds) ? -110 : underOdds,
-        gameId: p.game_id?.toString() || '',
-        vendor: 'actionnetwork',
-      });
-    });
-  } catch(e) { console.error('AN parse error:', e.message); }
-  return props;
+function formatStatLabel(label) {
+  const map = {
+    'H': 'Hits', 'HR': 'Home Runs', 'RBI': 'RBIs', 'K': 'Strikeouts',
+    'PTS': 'Points', 'REB': 'Rebounds', 'AST': 'Assists',
+    'SOG': 'Shots on Goal', 'G': 'Goals', 'A': 'Assists',
+  };
+  return map[label] || label;
 }
