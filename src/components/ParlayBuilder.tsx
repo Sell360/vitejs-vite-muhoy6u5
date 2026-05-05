@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ParlayShareCard } from './ParlayShareCard';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 
 interface ParlayLeg {
@@ -497,6 +498,19 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
                       fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap',
                       fontFamily: "'Barlow', sans-serif",
                     }}>🎯 PrizePicks</a>
+                  <div style={{ marginTop: 8 }}>
+                    <ParlayShareCard
+                      legs={parlay.legs.map(leg => ({
+                        label: leg.prop.playerName + ' ' + leg.pick.toUpperCase() + ' ' + leg.prop.line,
+                        matchup: (leg.prop.awayTeam || '') + ' @ ' + (leg.prop.homeTeam || ''),
+                        betType: leg.prop.propType,
+                        odds: leg.odds,
+                        sport: parlay.sport,
+                      }))}
+                      combinedOdds={parlay.combinedOdds}
+                      confidence={parlay.confidence}
+                    />
+                  </div>
                   </div>
                 </div>
               </div>

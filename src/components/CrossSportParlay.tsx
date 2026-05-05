@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, PlayerProp } from '../services/api';
 import { AIScanner } from './AIScanner';
+import { ParlayShareCard } from './ParlayShareCard';
 import { PublicBetting } from './PublicBetting';
 
 const SPORTS: Sport[] = ['mlb', 'nba', 'nfl', 'ncaaf', 'nhl', 'wnba', 'ufc'];
@@ -443,6 +444,14 @@ export function CrossSportParlay() {
               <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
                 <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '7px', background: 'rgba(74,222,128,.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,.25)', borderRadius: 7, fontSize: 11, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>🏈 DraftKings</a>
                 <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '7px', background: 'rgba(129,140,248,.1)', color: '#818cf8', border: '1px solid rgba(129,140,248,.25)', borderRadius: 7, fontSize: 11, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>🎯 PrizePicks</a>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <ParlayShareCard
+                  legs={legs.map(l => ({ label: l.prop.playerName + ' ' + l.pick.toUpperCase() + ' ' + l.prop.line, matchup: l.prop.awayTeam + ' @ ' + l.prop.homeTeam, betType: l.prop.propType, odds: l.odds, sport: l.sport }))}
+                  combinedOdds={combinedOdds}
+                  stake={stakeNum}
+                  payout={parseFloat(payout)}
+                />
               </div>
               <AIScanner legs={legs.map(l => ({ playerName: l.prop.playerName, propType: l.prop.propType, line: l.prop.line, pick: l.pick, odds: l.odds, homeTeam: l.prop.homeTeam, awayTeam: l.prop.awayTeam }))} />
             </div>

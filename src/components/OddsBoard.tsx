@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
+import { GameProjection } from './GameProjection';
+import { ParlayShareCard } from './ParlayShareCard';
 
 interface OddsBoardProps {
   sport: Sport;
@@ -201,6 +203,14 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
               {mlb?.weather && (
                 <div style={{ fontSize: 9, color: '#1a3060', marginTop: 1 }}>💨 {mlb.weather.windSpeed}mph · {mlb.weather.temperature}°F</div>
               )}
+              <div style={{ marginTop: 5 }}>
+                <GameProjection
+                  game={game}
+                  line={line}
+                  sport={sport}
+                  onAddToBet={(label, odds) => toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'TOTAL', side: odds > 0 ? 'over' : 'under', label, odds, sport })}
+                />
+              </div>
             </div>
 
             {/* Moneyline */}
@@ -362,6 +372,14 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                 </div>
               </div>
 
+              <div style={{ marginBottom: 8 }}>
+                <ParlayShareCard
+                  legs={slip.map(l => ({ label: l.label, matchup: l.matchup, betType: l.betType, odds: l.odds, sport: l.sport }))}
+                  combinedOdds={combinedOdds}
+                  stake={stakeNum}
+                  payout={parseFloat(payout)}
+                />
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, rgba(74,222,128,.15), rgba(74,222,128,.08))', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)', borderRadius: 8, fontSize: 13, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>
                   🏈 Bet DraftKings
