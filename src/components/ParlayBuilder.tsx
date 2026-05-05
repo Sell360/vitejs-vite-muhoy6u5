@@ -71,9 +71,7 @@ function decimalToAmerican(d: number): number {
 function getConfColor(c: number) {
   return c >= 78 ? '#4ade80' : c >= 65 ? '#fbbf24' : '#f87171';
 }
-function getTierColor(t: string) {
-  return t === 'S' ? '#4ade80' : t === 'A' ? '#fbbf24' : '#9ca3af';
-}
+
 function fmt(odds: number) {
   return odds === 0 ? 'N/A' : odds > 0 ? `+${odds}` : `${odds}`;
 }
@@ -328,6 +326,7 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
 }
 
 // ─── COMPONENT ────────────────────────────────────────────────────────────
+// ─── COMPONENT ────────────────────────────────────────────────────────────
 export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
   const [parlays, setParlays] = useState<Parlay[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -346,128 +345,158 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
     return sizeMatch && tierMatch;
   });
 
-  const btn = (active: boolean) => ({
-    padding: '5px 12px', background: active ? '#4fc3f7' : '#1e2a44',
-    color: active ? 'black' : '#9ca3af', border: `1px solid ${active ? '#4fc3f7' : '#374151'}`,
-    borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' as const,
-  });
+  const tierBg: Record<string, string> = { S: 'rgba(74,222,128,.12)', A: 'rgba(251,191,36,.1)', B: 'rgba(148,163,184,.07)' };
+  const tierBorder: Record<string, string> = { S: 'rgba(74,222,128,.25)', A: 'rgba(251,191,36,.2)', B: 'rgba(148,163,184,.15)' };
+  const tierText: Record<string, string> = { S: '#4ade80', A: '#fbbf24', B: '#94a3b8' };
 
   if (props.length === 0) {
     return (
-      <div style={{ background: '#1e2a44', borderRadius: '8px', padding: '24px', textAlign: 'center', color: '#9ca3af', marginTop: '20px' }}>
-        <div style={{ fontSize: '32px', marginBottom: '8px' }}>⏳</div>
-        <div>Waiting for props to load from today's scheduled games.</div>
-        <div style={{ fontSize: '12px', marginTop: '8px', color: '#6b7280' }}>Live and final games are excluded.</div>
+      <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: '36px 20px', textAlign: 'center', marginTop: 8 }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1e3560', marginBottom: 4 }}>Waiting for props</div>
+        <div style={{ fontSize: 12, color: '#122040' }}>Live and final games are excluded. Props load for upcoming games.</div>
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: '24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <h3 style={{ color: '#4fc3f7', margin: 0 }}>⚡ Today's Top 10 Parlays</h3>
-          <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-            Park factors • Umpire zones • Wind • Pace • Kalshi divergence • Injuries • Sharp signals • +EV filter
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800, color: '#38bdf8', letterSpacing: .5 }}>
+            ⚡ Today's Top Parlays
+          </div>
+          <div style={{ fontSize: 10, color: '#1a3060', marginTop: 2, fontWeight: 600 }}>
+            Park factors · Umpire zones · Wind · Pace · Kalshi · Injuries · Sharp signals · +EV
           </div>
         </div>
-        <div style={{ fontSize: '12px', color: '#4ade80', fontWeight: 'bold' }}>{parlays.length} generated</div>
+        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, color: '#4ade80', fontWeight: 700 }}>{parlays.length} generated</span>
       </div>
 
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <span style={{ color: '#9ca3af', fontSize: '12px', alignSelf: 'center' }}>Legs:</span>
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 5, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginRight: 2 }}>Legs</span>
         {(['all', 2, 3, 4, 5] as const).map(s => (
-          <button key={s} style={btn(filterSize === s)} onClick={() => setFilterSize(s)}>{s === 'all' ? 'All' : `${s}-Leg`}</button>
+          <button key={s} onClick={() => setFilterSize(s)} style={{
+            padding: '4px 11px', borderRadius: 5, cursor: 'pointer',
+            background: filterSize === s ? 'rgba(14,165,233,.15)' : 'rgba(255,255,255,.03)',
+            color: filterSize === s ? '#38bdf8' : '#2a4060',
+            border: `1px solid ${filterSize === s ? 'rgba(14,165,233,.3)' : 'rgba(255,255,255,.06)'}`,
+            fontSize: 11, fontWeight: 700, fontFamily: "'Barlow', sans-serif",
+          }}>{s === 'all' ? 'All' : `${s}L`}</button>
         ))}
-        <span style={{ color: '#9ca3af', fontSize: '12px', alignSelf: 'center', marginLeft: '8px' }}>Tier:</span>
+        <span style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', marginLeft: 6, marginRight: 2 }}>Tier</span>
         {['all', 'S', 'A', 'B'].map(t => (
-          <button key={t} style={btn(filterTier === t)} onClick={() => setFilterTier(t)}>{t === 'all' ? 'All' : `${t}-Tier`}</button>
+          <button key={t} onClick={() => setFilterTier(t)} style={{
+            padding: '4px 11px', borderRadius: 5, cursor: 'pointer',
+            background: filterTier === t ? tierBg[t] || 'rgba(14,165,233,.15)' : 'rgba(255,255,255,.03)',
+            color: filterTier === t ? (tierText[t] || '#38bdf8') : '#2a4060',
+            border: `1px solid ${filterTier === t ? (tierBorder[t] || 'rgba(14,165,233,.3)') : 'rgba(255,255,255,.06)'}`,
+            fontSize: 11, fontWeight: 700, fontFamily: "'Barlow', sans-serif",
+          }}>{t === 'all' ? 'All' : t}</button>
         ))}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* Parlay cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map((parlay, idx) => (
-          <div key={parlay.id} style={{ background: '#1e2a44', border: `1px solid ${expanded === parlay.id ? '#4fc3f7' : '#374151'}`, borderRadius: '8px', overflow: 'hidden' }}>
-            <div onClick={() => setExpanded(expanded === parlay.id ? null : parlay.id)}
-              style={{ padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#6b7280', minWidth: '24px' }}>#{idx + 1}</div>
-              <div style={{ background: getTierColor(parlay.tier), color: 'black', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>{parlay.tier}</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#e0f0ff' }}>{parlay.label}</div>
-                <div style={{ fontSize: '11px', color: '#6b8aad', marginTop: '2px' }}>{parlay.edgeSummary}</div>
+          <div key={parlay.id} style={{
+            background: expanded === parlay.id ? 'rgba(255,255,255,.035)' : 'rgba(255,255,255,.02)',
+            border: `1px solid ${expanded === parlay.id ? 'rgba(14,165,233,.2)' : 'rgba(255,255,255,.06)'}`,
+            borderRadius: 10, overflow: 'hidden', transition: 'all .15s',
+          }}>
+            {/* Card header */}
+            <div
+              onClick={() => setExpanded(expanded === parlay.id ? null : parlay.id)}
+              style={{ padding: '11px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}
+            >
+              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 800, color: '#1e3060', minWidth: 22 }}>#{idx+1}</span>
+              <div style={{
+                background: tierBg[parlay.tier], border: `1px solid ${tierBorder[parlay.tier]}`,
+                color: tierText[parlay.tier], padding: '2px 8px', borderRadius: 5,
+                fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800, letterSpacing: .5,
+              }}>{parlay.tier}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800, color: '#c8ddf0', letterSpacing: .3 }}>{parlay.label}</div>
+                <div style={{ fontSize: 10, color: '#1a3060', marginTop: 1, fontWeight: 600 }}>{parlay.edgeSummary}</div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '11px', color: '#9ca3af' }}>PAYOUT</div>
-                <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#4ade80' }}>{fmt(parlay.combinedOdds)}</div>
+              <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Payout</div>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 900, color: '#4ade80', lineHeight: 1 }}>{fmt(parlay.combinedOdds)}</div>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '11px', color: '#9ca3af' }}>CONF</div>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: getConfColor(parlay.confidence) }}>{parlay.confidence}%</div>
+              <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Conf</div>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 900, color: getConfColor(parlay.confidence), lineHeight: 1 }}>{parlay.confidence}%</div>
               </div>
-              <div style={{ color: '#9ca3af' }}>{expanded === parlay.id ? '▲' : '▼'}</div>
+              <span style={{ color: '#1a3060', fontSize: 12 }}>{expanded === parlay.id ? '▲' : '▼'}</span>
             </div>
 
+            {/* Expanded legs */}
             {expanded === parlay.id && (
-              <div style={{ borderTop: '1px solid #374151' }}>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,.06)' }}>
                 {parlay.legs.map((leg, li) => (
-                  <div key={li} style={{ padding: '12px 16px', borderBottom: li < parlay.legs.length - 1 ? '1px solid #2d3748' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#e0f0ff' }}>
+                  <div key={li} style={{
+                    padding: '10px 14px',
+                    borderBottom: li < parlay.legs.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800, color: '#c8ddf0', letterSpacing: .3 }}>
                         {leg.prop.playerName}
-                        {leg.prop.team && <span style={{ color: '#9ca3af', fontWeight: 'normal', fontSize: '13px' }}> ({leg.prop.team})</span>}
+                        {leg.prop.team && <span style={{ color: '#1e3a60', fontWeight: 600, fontSize: 12 }}> · {leg.prop.team}</span>}
                       </div>
-                      <div style={{ fontSize: '13px', marginTop: '3px' }}>
-                        <span style={{ color: leg.pick === 'over' ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>{leg.pick.toUpperCase()}</span>
-                        <span style={{ color: '#9ca3af' }}> {leg.prop.line} {leg.prop.propType}</span>
+                      <div style={{ fontSize: 12, marginTop: 2 }}>
+                        <span style={{ color: leg.pick === 'over' ? '#4ade80' : '#f87171', fontWeight: 800 }}>{leg.pick.toUpperCase()}</span>
+                        <span style={{ color: '#1e3a60' }}> {leg.prop.line} {leg.prop.propType}</span>
                       </div>
                       {leg.edgeFlags.length > 0 && (
-                        <div style={{ marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {leg.edgeFlags.map((flag, fi) => (
-                            <span key={fi} style={{ fontSize: '11px', background: '#0f2a1a', color: '#4ade80', padding: '2px 6px', borderRadius: '3px' }}>{flag}</span>
+                            <span key={fi} style={{
+                              fontSize: 10, background: 'rgba(74,222,128,.08)', color: '#4ade80',
+                              border: '1px solid rgba(74,222,128,.2)', padding: '1px 7px', borderRadius: 4, fontWeight: 700,
+                            }}>{flag}</span>
                           ))}
                         </div>
                       )}
-                      {leg.prop.impliedProb && (
-                        <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                          Implied: Over {leg.prop.impliedProb.over}% / Under {leg.prop.impliedProb.under}% • Vig: {leg.prop.impliedProb.vig}%
-                        </div>
-                      )}
-                      {leg.reason && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{leg.reason}</div>}
+                      {leg.reason && <div style={{ fontSize: 10, color: '#1a3060', marginTop: 2, fontWeight: 600 }}>{leg.reason}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>ODDS</div>
-                        <div style={{ fontSize: '15px', fontWeight: 'bold', color: leg.odds > 0 ? '#4ade80' : '#e0f0ff' }}>{fmt(leg.odds)}</div>
+                        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Odds</div>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: leg.odds > 0 ? '#4ade80' : '#c8ddf0', lineHeight: 1 }}>{fmt(leg.odds)}</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', color: '#9ca3af' }}>CONF</div>
-                        <div style={{ fontSize: '15px', fontWeight: 'bold', color: getConfColor(leg.confidence) }}>{leg.confidence}%</div>
+                        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Conf</div>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: getConfColor(leg.confidence), lineHeight: 1 }}>{leg.confidence}%</div>
                       </div>
                     </div>
                   </div>
                 ))}
 
-                <div style={{ padding: '12px 16px', background: '#0f1c2e', display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold' }}>Payout:</div>
+                {/* Payout calculator + CTA */}
+                <div style={{ padding: '10px 14px', background: 'rgba(0,0,0,.25)', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Payout</span>
                   {[10, 25, 50, 100].map(bet => (
                     <div key={bet} style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '11px', color: '#9ca3af' }}>${bet}</div>
-                      <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4ade80' }}>${(bet * americanToDecimal(parlay.combinedOdds)).toFixed(2)}</div>
+                      <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700 }}>${bet}</div>
+                      <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 800, color: '#4ade80' }}>${(bet * americanToDecimal(parlay.combinedOdds)).toFixed(0)}</div>
                     </div>
                   ))}
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{
-                      padding: '6px 12px', background: '#1a3a1a', color: '#4ade80',
-                      border: '1px solid #4ade80', borderRadius: '6px',
-                      fontSize: '11px', fontWeight: '700', textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                    }}>🏈 Bet on DraftKings</a>
+                      padding: '6px 13px', background: 'rgba(74,222,128,.1)', color: '#4ade80',
+                      border: '1px solid rgba(74,222,128,.25)', borderRadius: 7,
+                      fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap',
+                      fontFamily: "'Barlow', sans-serif",
+                    }}>🏈 DraftKings</a>
                     <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{
-                      padding: '6px 12px', background: '#1a1a3a', color: '#818cf8',
-                      border: '1px solid #818cf8', borderRadius: '6px',
-                      fontSize: '11px', fontWeight: '700', textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                    }}>🎯 Play on PrizePicks</a>
+                      padding: '6px 13px', background: 'rgba(129,140,248,.1)', color: '#818cf8',
+                      border: '1px solid rgba(129,140,248,.25)', borderRadius: 7,
+                      fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap',
+                      fontFamily: "'Barlow', sans-serif",
+                    }}>🎯 PrizePicks</a>
                   </div>
                 </div>
               </div>
@@ -476,18 +505,19 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
         ))}
 
         {filtered.length === 0 && (
-          <div style={{ background: '#1e2a44', padding: '20px', borderRadius: '8px', textAlign: 'center', color: '#9ca3af' }}>
+          <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: '24px', textAlign: 'center', fontSize: 13, color: '#1e3560', fontWeight: 600 }}>
             No parlays match current filters.
           </div>
         )}
       </div>
 
-      <div style={{ marginTop: '16px', padding: '12px', background: '#0f1c2e', borderRadius: '8px', fontSize: '11px', color: '#6b7280' }}>
-        <div style={{ marginBottom: '4px', color: '#9ca3af', fontWeight: 'bold' }}>Edge signals:</div>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <span>🎯 Kalshi divergence</span><span>💰 Sharp money</span><span>📈 +EV vs book</span>
-          <span>🔴 Park factors</span><span>👨‍⚖️ Umpire zone</span><span>💨 Wind</span>
-          <span>⚡ Pace matchup</span><span>📊 Market inefficiency</span><span>🚑 Injury filter</span>
+      {/* Edge legend */}
+      <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,255,255,.015)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 8 }}>
+        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Edge signals</div>
+        <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', fontSize: 11, color: '#1e3a60', fontWeight: 600 }}>
+          {['🎯 Kalshi divergence','💰 Sharp money','📈 +EV vs book','🔴 Park factors','⚖ Umpire zone','💨 Wind','⚡ Pace','📊 Market inefficiency','🚑 Injury filter'].map(s => (
+            <span key={s}>{s}</span>
+          ))}
         </div>
       </div>
     </div>
@@ -496,8 +526,6 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
 
 // DraftKings deep link helper
 export function buildDKDeepLink(legs: { playerName: string; propType: string; line: number; pick: string }[]): string {
-  // DraftKings sportsbook deep link format
-  // For now open DK search with the first leg's player name
   const query = encodeURIComponent(legs[0]?.playerName || 'props');
   return `https://sportsbook.draftkings.com/search?q=${query}`;
 }

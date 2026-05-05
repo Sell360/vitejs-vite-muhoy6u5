@@ -8,74 +8,64 @@ interface GameCardProps {
 }
 
 export function GameCard({ game, sport, isSelected, onSelectGame }: GameCardProps) {
-  const mlbGame = sport === 'mlb' ? game as GameData : null;
-  const wnbaGame = sport === 'wnba' ? game as WNBAGameData : null;
-
-  const formatTime = (t: string) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-
-  const statusColor = game.status === 'live' ? '#4ade80' : game.status === 'final' ? '#6b7280' : '#fbbf24';
+  const mlb = sport === 'mlb' ? game as GameData : null;
+  const wnba = sport === 'wnba' ? game as WNBAGameData : null;
+  const fmt = (t: string) => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const statusColor = game.status === 'live' ? '#4ade80' : game.status === 'final' ? '#334155' : '#fbbf24';
+  const statusLabel = game.status.toUpperCase();
 
   return (
     <div
       onClick={() => onSelectGame(game.id)}
       style={{
-        background: isSelected ? '#162032' : '#1e2a44',
-        border: `1px solid ${isSelected ? '#4fc3f7' : '#374151'}`,
-        borderRadius: '8px', padding: '14px', margin: '8px 0',
-        cursor: 'pointer', transition: 'all 0.2s ease',
-        boxShadow: isSelected ? '0 0 0 2px #4fc3f7' : 'none',
+        background: isSelected ? 'rgba(14,165,233,.08)' : 'rgba(255,255,255,.025)',
+        border: `1px solid ${isSelected ? 'rgba(14,165,233,.35)' : 'rgba(255,255,255,.06)'}`,
+        borderLeft: `3px solid ${isSelected ? '#0ea5e9' : 'transparent'}`,
+        borderRadius: 10, padding: '11px 14px',
+        cursor: 'pointer', transition: 'all .15s',
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = '#4fc3f7'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = isSelected ? '#4fc3f7' : '#374151'; e.currentTarget.style.transform = 'translateY(0)'; }}
+      onMouseEnter={e => { if (!isSelected) { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,.12)'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,.04)'; } }}
+      onMouseLeave={e => { if (!isSelected) { (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,.06)'; (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,.025)'; } }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-        <div style={{ fontSize: '17px', fontWeight: 'bold', color: '#e0f0ff' }}>{game.awayTeam} @ {game.homeTeam}</div>
-        <div style={{ background: statusColor, color: 'black', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-          {game.status.toUpperCase()}
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, gap: 8 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#c8ddf0', lineHeight: 1.2, fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: .3 }}>
+          {game.awayTeam} <span style={{ color: '#1a3060', fontWeight: 400 }}>@</span> {game.homeTeam}
         </div>
+        <div style={{
+          background: statusColor + '18', color: statusColor,
+          border: `1px solid ${statusColor}40`,
+          padding: '2px 7px', borderRadius: 4,
+          fontSize: 9, fontWeight: 800, letterSpacing: 1, flexShrink: 0,
+          fontFamily: "'Barlow Condensed', sans-serif",
+        }}>{statusLabel}</div>
       </div>
 
+      {/* Score */}
       {(game.status === 'live' || game.status === 'final') && game.homeScore !== undefined && (
-        <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#4fc3f7', textAlign: 'center', marginBottom: '8px' }}>
-          {game.awayTeam} {game.awayScore} — {game.homeScore} {game.homeTeam}
-          {mlbGame?.inning && <span style={{ fontSize: '12px', color: '#9ca3af', marginLeft: '8px' }}>{mlbGame.inning}</span>}
+        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 800, color: '#38bdf8', textAlign: 'center', marginBottom: 6, letterSpacing: .5 }}>
+          {game.awayScore} — {game.homeScore}
+          {mlb?.inning && <span style={{ fontSize: 11, color: '#334155', marginLeft: 6, fontWeight: 600 }}>{mlb.inning}</span>}
         </div>
       )}
 
-      <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-        📍 {game.venue || 'TBD'} &nbsp;•&nbsp; ⏰ {formatTime(game.startTime)}
+      {/* Meta */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', fontSize: 11, color: '#1e3a60' }}>
+        <span>🕐 {fmt(game.startTime)}</span>
+        {game.venue && <span>📍 {game.venue}</span>}
+        {mlb?.weather && <span>🌤 {mlb.weather.temperature}°F · {mlb.weather.windSpeed}mph</span>}
+        {mlb?.umpire && (
+          <span style={{ color: mlb.umpire.strikeZoneTendency === 'tight' ? '#f87171' : mlb.umpire.strikeZoneTendency === 'wide' ? '#4ade80' : '#fbbf24' }}>
+            ⚖ {mlb.umpire.name} ({mlb.umpire.strikeZoneTendency})
+          </span>
+        )}
+        {wnba?.pace && <span>⚡ {wnba.pace} poss/g</span>}
       </div>
-
-      {mlbGame?.weather && (
-        <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-          🌤️ {mlbGame.weather.temperature}°F • {mlbGame.weather.conditions} • Wind: {mlbGame.weather.windSpeed}mph
-        </div>
-      )}
-
-      {mlbGame?.umpire && (
-        <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-          👨‍⚖️ {mlbGame.umpire.name} —
-          <span style={{ color: mlbGame.umpire.strikeZoneTendency === 'tight' ? '#f87171' : mlbGame.umpire.strikeZoneTendency === 'wide' ? '#4ade80' : '#fbbf24' }}>
-            {' '}{mlbGame.umpire.strikeZoneTendency} zone
-          </span>
-        </div>
-      )}
-
-      {wnbaGame?.referee && (
-        <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-          👩‍⚖️ {wnbaGame.referee.name} —
-          <span style={{ color: wnbaGame.referee.foulTendency === 'strict' ? '#f87171' : wnbaGame.referee.foulTendency === 'lenient' ? '#4ade80' : '#fbbf24' }}>
-            {' '}{wnbaGame.referee.foulTendency} calls
-          </span>
-        </div>
-      )}
-
-      {wnbaGame?.pace && (
-        <div style={{ fontSize: '13px', color: '#9ca3af' }}>⚡ Pace: {wnbaGame.pace} poss/game</div>
-      )}
 
       {isSelected && (
-        <div style={{ marginTop: '8px', fontSize: '12px', color: '#4fc3f7', fontWeight: 'bold' }}>✓ SELECTED</div>
+        <div style={{ marginTop: 7, fontSize: 10, fontWeight: 800, color: '#0ea5e9', letterSpacing: 1, textTransform: 'uppercase', fontFamily: "'Barlow Condensed', sans-serif" }}>
+          ✓ Selected — view props in Parlays tab
+        </div>
       )}
     </div>
   );
