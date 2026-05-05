@@ -34,7 +34,8 @@ export interface WNBAGameData {
 }
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
-const WX_KEY = import.meta.env.VITE_WEATHER_API_KEY || '';
+// SECURITY: weather requests now go through /api/weather serverless function
+// so the OpenWeather key stays server-side and never reaches the public bundle.
 
 const ESPN_PATHS: Record<Sport, string> = {
   mlb: 'baseball/mlb', wnba: 'basketball/wnba', nba: 'basketball/nba',
@@ -154,12 +155,13 @@ class ApiService {
   }
 
   async getWeather(venue: string): Promise<GameData['weather'] | null> {
-    if (!WX_KEY || !venue) return null;
+    if (!venue) return null;
     try {
-      const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(venue)}&appid=${WX_KEY}&units=imperial`);
+      const res = await fetch(`/api/weather?venue=${encodeURIComponent(venue)}`);
       if (!res.ok) return null;
       const d = await res.json();
-      return { temperature: Math.round(d.main?.temp ?? 72), windSpeed: Math.round(d.wind?.speed ?? 5), conditions: d.weather?.[0]?.description ?? 'Clear' };
+      if (!d || d.error) return null;
+      return d as GameData['weather'];
     } catch { return null; }
   }
 }
