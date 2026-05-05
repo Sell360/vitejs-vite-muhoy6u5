@@ -6,6 +6,9 @@ import { CrossSportParlay } from './components/CrossSportParlay';
 import type { Sport, PlayerProp } from './services/api';
 import { BetTracker } from './components/BetTracker';
 import { OddsBoard } from './components/OddsBoard';
+import { Leaderboard } from './components/Leaderboard';
+import { AuthModal } from './components/AuthModal';
+import { useAuth } from './contexts/AuthContext';
 
 const SPORTS: { key: Sport; label: string; emoji: string }[] = [
   { key: 'mlb',   label: 'MLB',  emoji: '⚾' },
@@ -24,7 +27,9 @@ export default function Betz360() {
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string|null>(null);
   const [propView, setPropView] = useState<'parlay'|'props'>('parlay');
-  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'>('parlays');
+  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'>('parlays');
+  const [authOpen, setAuthOpen] = useState(false);
+  const { user, username } = useAuth();
   const [aiOpen, setAiOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, lastUpdated } = useRealTimeData(sport);
@@ -332,6 +337,20 @@ export default function Betz360() {
               className={`b360-ctrl-btn${aiOpen?' active':''}`}
               onClick={() => setAiOpen(v => !v)}
             >⚡ AI Analyze</button>
+            {user ? (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setTab('tracker')}
+                title={`Logged in as @${username || 'user'}`}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >👤 @{username || 'me'}</button>
+            ) : (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setAuthOpen(true)}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >Sign in</button>
+            )}
           </div>
         </div>
 
@@ -347,8 +366,8 @@ export default function Betz360() {
             ))}
             <div className="b360-sep"/>
             {/* Nav tabs inline on desktop */}
-            {(['games','parlays','cross','tracker'] as const).map(t => {
-              const labels:{[k:string]:string} = {games:'🏟 Games',parlays:'⚡ Parlays',cross:'🌐 Multi-Sport',tracker:'📊 Tracker'};
+            {(['games','parlays','cross','tracker','board'] as const).map(t => {
+              const labels:{[k:string]:string} = {games:'🏟 Games',parlays:'⚡ Parlays',cross:'🌐 Multi-Sport',tracker:'📊 Tracker',board:'🏆 Leaderboard'};
               return (
                 <button
                   key={t}
@@ -474,6 +493,13 @@ export default function Betz360() {
             <BetTracker/>
           </div>
         )}
+
+        {tab==='board' && (
+          <div>
+            <div className="b360-slabel" style={{marginBottom:14}}>Leaderboard — Top Sharp Bettors</div>
+            <Leaderboard/>
+          </div>
+        )}
       </main>
 
       {/* ── FOOTER ── */}
@@ -489,6 +515,7 @@ export default function Betz360() {
           </span>
         </div>
       </footer>
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 }

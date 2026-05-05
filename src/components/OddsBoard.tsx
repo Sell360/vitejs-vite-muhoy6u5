@@ -4,6 +4,8 @@ import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
 import { GameProjection } from './GameProjection';
 import { getTimezoneEdge } from '../services/edgeSignals';
 import { ParlayShareCard } from './ParlayShareCard';
+import { useAuth } from '../contexts/AuthContext';
+import { logBet } from '../services/mockBets';
 
 interface OddsBoardProps {
   sport: Sport;
@@ -104,6 +106,8 @@ function OddsCell({ label, sublabel, odds, isAdded, onClick, disabled }: OddsCel
 }
 
 export function OddsBoard({ sport, games }: OddsBoardProps) {
+  const { user } = useAuth();
+  const [logged, setLogged] = useState(false);
   const [lines, setLines] = useState<GameLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
   const [slip, setSlip] = useState<BetSlipLeg[]>([]);
@@ -394,6 +398,36 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                   payout={parseFloat(payout)}
                 />
               </div>
+              {user && (
+                <button
+                  onClick={async () => {
+                    setLogged(false);
+                    for (const leg of slip) {
+                      const game = games.find(g => g.id === leg.gameId);
+                      await logBet({
+                        user_id: user.id,
+                        sport: leg.sport,
+                        event_id: leg.gameId,
+                        game_time: game?.startTime || new Date().toISOString(),
+                        matchup: leg.matchup,
+                        bet_type: leg.betType,
+                        pick_label: leg.label,
+                        pick_side: leg.side,
+                        line: null,
+                        odds: leg.odds,
+                        stake: stakeNum / slip.length,
+                        legs: null,
+                        status: 'pending',
+                      });
+                    }
+                    setLogged(true);
+                    setTimeout(() => { setSlip([]); setSlipOpen(false); setLogged(false); }, 1500);
+                  }}
+                  style={{ width: '100%', padding: '10px', marginBottom: 8, background: logged ? 'rgba(74,222,128,.2)' : 'linear-gradient(135deg, rgba(99,102,241,.18), rgba(99,102,241,.08))', color: logged ? '#4ade80' : '#818cf8', border: `1px solid ${logged ? 'rgba(74,222,128,.4)' : 'rgba(99,102,241,.3)'}`, borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: "'Barlow', sans-serif" }}
+                >
+                  {logged ? '✓ Bet logged to tracker!' : `📊 Log as mock bet ($${stakeNum.toFixed(0)} stake)`}
+                </button>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '10px', background: 'linear-gradient(135deg, rgba(74,222,128,.15), rgba(74,222,128,.08))', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)', borderRadius: 8, fontSize: 13, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>
                   🏈 Bet DraftKings
