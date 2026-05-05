@@ -455,7 +455,20 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
                       <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4ade80' }}>${(bet * americanToDecimal(parlay.combinedOdds)).toFixed(2)}</div>
                     </div>
                   ))}
-                  <div style={{ marginLeft: 'auto', fontSize: '11px', color: '#6b7280' }}>⚠️ Bet responsibly</div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{
+                      padding: '6px 12px', background: '#1a3a1a', color: '#4ade80',
+                      border: '1px solid #4ade80', borderRadius: '6px',
+                      fontSize: '11px', fontWeight: '700', textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}>🏈 Bet on DraftKings</a>
+                    <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{
+                      padding: '6px 12px', background: '#1a1a3a', color: '#818cf8',
+                      border: '1px solid #818cf8', borderRadius: '6px',
+                      fontSize: '11px', fontWeight: '700', textDecoration: 'none',
+                      whiteSpace: 'nowrap',
+                    }}>🎯 Play on PrizePicks</a>
+                  </div>
                 </div>
               </div>
             )}
