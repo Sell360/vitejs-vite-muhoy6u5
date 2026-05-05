@@ -25,6 +25,7 @@ exports.handler = async (event) => {
   const ODDS_KEY = process.env.VITE_ODDS_API_KEY || 'eec9270deaa01691ceac36b1b6ada557';
 
   const SPORT_MAP = {
+    ncaaf: 'americanfootball_ncaa',
     mlb:  'baseball_mlb',
     nba:  'basketball_nba',
     nfl:  'americanfootball_nfl',
@@ -34,6 +35,7 @@ exports.handler = async (event) => {
   };
 
   const PROP_MARKETS = {
+    ncaaf: 'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
     mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
     nba:  'player_points,player_rebounds,player_assists,player_threes',
     nfl:  'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',

@@ -1,4 +1,4 @@
-export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc';
+export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc' | 'ncaaf';
 
 export interface GameData {
   id: string; homeTeam: string; awayTeam: string; startTime: string;
@@ -38,7 +38,7 @@ const WX_KEY = import.meta.env.VITE_WEATHER_API_KEY || '';
 
 const ESPN_PATHS: Record<Sport, string> = {
   mlb: 'baseball/mlb', wnba: 'basketball/wnba', nba: 'basketball/nba',
-  nfl: 'football/nfl', nhl: 'hockey/nhl', ufc: 'mma/ufc',
+  nfl: 'football/nfl', ncaaf: 'football/college-football', nhl: 'hockey/nhl', ufc: 'mma/ufc',
 };
 
 const cache: Record<string, { data: any; ts: number }> = {};

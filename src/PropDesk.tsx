@@ -7,12 +7,13 @@ import type { Sport, PlayerProp } from './services/api';
 import { BetTracker } from './components/BetTracker';
 
 const SPORTS: { key: Sport; label: string; emoji: string }[] = [
-  { key: 'mlb',  label: 'MLB',  emoji: '⚾' },
-  { key: 'nba',  label: 'NBA',  emoji: '🏀' },
-  { key: 'nfl',  label: 'NFL',  emoji: '🏈' },
-  { key: 'nhl',  label: 'NHL',  emoji: '🏒' },
-  { key: 'wnba', label: 'WNBA', emoji: '🏀' },
-  { key: 'ufc',  label: 'UFC',  emoji: '🥊' },
+  { key: 'mlb',   label: 'MLB',    emoji: '⚾' },
+  { key: 'nba',   label: 'NBA',    emoji: '🏀' },
+  { key: 'nfl',   label: 'NFL',    emoji: '🏈' },
+  { key: 'ncaaf', label: 'COLLEGE', emoji: '🏈' },
+  { key: 'nhl',   label: 'NHL',    emoji: '🏒' },
+  { key: 'wnba',  label: 'WNBA',   emoji: '🏀' },
+  { key: 'ufc',   label: 'UFC',    emoji: '🥊' },
 ];
 
 const C = {
@@ -97,19 +98,21 @@ export default function Betz360() {
               <div style={{ position: 'absolute', inset: 0, borderRadius: '10px', background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 60%)' }} />
             </div>
 
+
             {/* Wordmark */}
             <div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '0px', lineHeight: 1 }}>
                 <span style={{
-                  fontSize: '26px', fontWeight: '900', letterSpacing: '-1.5px',
+                  fontSize: '30px', fontFamily: "'Permanent Marker', cursive",
                   background: 'linear-gradient(135deg, #ffffff 0%, #93c5fd 100%)',
                   WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                  filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.5))',
                 }}>BETZ</span>
                 <span style={{
-                  fontSize: '26px', fontWeight: '900', letterSpacing: '-1.5px',
+                  fontSize: '30px', fontFamily: "'Permanent Marker', cursive",
                   background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #6366f1 100%)',
                   WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                  textShadow: 'none',
+                  filter: 'drop-shadow(0 0 8px rgba(99,102,241,0.6))',
                 }}>360</span>
               </div>
               <div style={{ fontSize: '9px', color: '#475569', letterSpacing: '3px', textTransform: 'uppercase', marginTop: '1px', fontWeight: '600' }}>PROP INTELLIGENCE</div>
@@ -283,7 +286,7 @@ export default function Betz360() {
       )}
 
       <div style={{ textAlign: 'center', padding: '20px 16px', borderTop: `1px solid ${C.border}`, fontSize: '12px', color: C.dim, marginTop: '24px' }}>
-        BETZ360 — MLB · NBA · NFL · NHL · WNBA · UFC · Bet responsibly
+        BETZ360 — MLB · NBA · NFL · COLLEGE · NHL · WNBA · UFC · Bet responsibly
       </div>
     </div>
   );
