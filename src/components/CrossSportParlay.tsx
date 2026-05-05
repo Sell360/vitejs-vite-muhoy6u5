@@ -84,18 +84,22 @@ export function CrossSportParlay() {
 
   // Load props + game lines for a sport when selected
   useEffect(() => {
+    setViewFilter('all'); // reset filter on sport change
     if (allSportProps[activeSport]) return;
     setLoading(prev => ({ ...prev, [activeSport]: true }));
 
     Promise.all([
-      apiService.getAllProps(activeSport),
+      apiService.getAllProps(activeSport).catch(() => [] as PlayerProp[]),
       apiService.getGameLines(activeSport)
         .then(lines => apiService.gameLinesToProps(lines))
         .catch(() => [] as PlayerProp[]),
     ]).then(([playerProps, gameLineProps]) => {
-      // Merge: game lines first (moneyline/spread/total), then player props
       const merged = [...gameLineProps, ...playerProps];
       setAllSportProps(prev => ({ ...prev, [activeSport]: merged }));
+      // Auto-switch to props view if no game lines came back
+      if (gameLineProps.length === 0 && playerProps.length > 0) {
+        setViewFilter('props');
+      }
     }).catch(() => {
       setAllSportProps(prev => ({ ...prev, [activeSport]: [] }));
     }).finally(() => {
@@ -234,11 +238,43 @@ export function CrossSportParlay() {
         )}
 
         {/* Empty */}
-        {!showPublic && !loading[activeSport] && filteredProps.length === 0 && (
-          <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: '28px 20px', textAlign: 'center', color: '#1e3560', fontSize: 13, fontWeight: 600 }}>
-            No {SPORT_LABELS[activeSport]} {viewFilter === 'games' ? 'game lines' : viewFilter === 'props' ? 'player props' : 'bets'} available right now
-          </div>
-        )}
+        {!showPublic && !loading[activeSport] && filteredProps.length === 0 && (() => {
+          const hasAny = allProps.length > 0;
+          const hasGameLines = allProps.some(p => GAME_BET_TYPES.includes(p.propType));
+          const hasPlayerProps = allProps.some(p => !GAME_BET_TYPES.includes(p.propType));
+          return (
+            <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: '32px 20px', textAlign: 'center' }}>
+              <div style={{ fontSize: 24, marginBottom: 10 }}>
+                {!hasAny ? '📅' : viewFilter === 'games' ? '🏟' : '👤'}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3560', marginBottom: 6 }}>
+                {!hasAny
+                  ? `No ${SPORT_LABELS[activeSport]} games scheduled today`
+                  : viewFilter === 'games' && !hasGameLines
+                  ? `No ${SPORT_LABELS[activeSport]} game lines available`
+                  : viewFilter === 'props' && !hasPlayerProps
+                  ? `No ${SPORT_LABELS[activeSport]} player props available`
+                  : `No ${SPORT_LABELS[activeSport]} bets available`}
+              </div>
+              {viewFilter === 'games' && hasPlayerProps && (
+                <button onClick={() => setViewFilter('props')} style={{
+                  marginTop: 8, padding: '6px 16px', borderRadius: 7, cursor: 'pointer',
+                  background: 'rgba(14,165,233,.1)', color: '#38bdf8',
+                  border: '1px solid rgba(14,165,233,.25)',
+                  fontSize: 12, fontWeight: 700, fontFamily: "'Barlow', sans-serif",
+                }}>👤 Switch to Player Props</button>
+              )}
+              {viewFilter === 'props' && hasGameLines && (
+                <button onClick={() => setViewFilter('games')} style={{
+                  marginTop: 8, padding: '6px 16px', borderRadius: 7, cursor: 'pointer',
+                  background: 'rgba(14,165,233,.1)', color: '#38bdf8',
+                  border: '1px solid rgba(14,165,233,.25)',
+                  fontSize: 12, fontWeight: 700, fontFamily: "'Barlow', sans-serif",
+                }}>🏟 Switch to Game Bets</button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── GAME BETS section ── */}
         {!showPublic && !loading[activeSport] && (viewFilter === 'all' || viewFilter === 'games') && Object.keys(gameGroups).length > 0 && (
