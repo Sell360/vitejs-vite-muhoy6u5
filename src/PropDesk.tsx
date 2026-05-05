@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useRealTimeData } from './hooks/useRealTimeData';
-import { GameCard } from './components/GameCard';
 import { PropsList } from './components/PropsList';
 import { ParlayBuilder } from './components/ParlayBuilder';
 import { CrossSportParlay } from './components/CrossSportParlay';
 import type { Sport, PlayerProp } from './services/api';
 import { BetTracker } from './components/BetTracker';
+import { OddsBoard } from './components/OddsBoard';
 
 const SPORTS: { key: Sport; label: string; emoji: string }[] = [
   { key: 'mlb',   label: 'MLB',  emoji: '⚾' },
@@ -27,16 +27,11 @@ export default function Betz360() {
   const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'>('parlays');
   const [aiOpen, setAiOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, fetchPropsForGame, lastUpdated } = useRealTimeData(sport);
+  const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, lastUpdated } = useRealTimeData(sport);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
 
   const changeSport = (s: Sport) => { setSport(s); setSelectedGameId(null); setPropView('parlay'); };
-  const selectGame = (id: string) => {
-    setSelectedGameId(id); fetchPropsForGame(id); setTab('parlays');
-    const g = games.find(x => x.id === id);
-    if (g) setInput(`${g.awayTeam} @ ${g.homeTeam}`);
-  };
   const analyzeProp = (p: PlayerProp) => {
     setInput(`${p.playerName} ${p.propType} ${p.line} — Over ${p.overOdds} / Under ${p.underOdds}`);
     setAiOpen(true);
@@ -423,25 +418,15 @@ export default function Betz360() {
       <main id="b360-main">
 
         {(tab==='games'||tab==='parlays') && (
-          <div className="b360-two-col">
+          <div className={tab==='games' ? '' : 'b360-two-col'}>
 
-            {/* Games column */}
-            <div className={`b360-games-col`} style={{display: tab==='games'?'block':'none'}}>
-              <div className="b360-col-head">
-                <span className="b360-slabel">{sport.toUpperCase()} Today</span>
-                {games.length>0&&<span className="b360-chip b360-chip-green">{games.length}</span>}
-              </div>
-              {dataLoading && (
+            {/* Games column — full odds board */}
+            <div style={{display: tab==='games'?'block':'none', gridColumn: '1 / -1'}}>
+              {dataLoading ? (
                 <div className="b360-empty"><div className="b360-empty-icon">⏳</div><div className="b360-empty-title">Loading games…</div></div>
+              ) : (
+                <OddsBoard sport={sport} games={games} onNavigateParlays={() => setTab('parlays')} />
               )}
-              {!dataLoading&&games.length===0 && (
-                <div className="b360-empty"><div className="b360-empty-icon">🏟</div><div className="b360-empty-title">No {sport.toUpperCase()} games today</div></div>
-              )}
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {games.map(g => (
-                  <GameCard key={g.id} game={g} sport={sport} isSelected={g.id===selectedGameId} onSelectGame={selectGame}/>
-                ))}
-              </div>
             </div>
 
             {/* Parlays column */}
