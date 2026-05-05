@@ -45,7 +45,14 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   const { sport, type } = event.queryStringParameters || {};
-  const ODDS_KEY = process.env.VITE_ODDS_API_KEY || 'eec9270deaa01691ceac36b1b6ada557';
+  // SECURITY: This function runs on Netlify's server, never the client.
+  // The key is read from an environment variable that does NOT start with VITE_
+  // so it's not bundled into the public frontend. Set in Netlify dashboard:
+  //   Site settings → Environment variables → ODDS_API_KEY
+  const ODDS_KEY = process.env.ODDS_API_KEY;
+  if (!ODDS_KEY) {
+    return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'ODDS_API_KEY not configured on server' }) };
+  }
 
   const SPORT_MAP = {
     ncaaf: 'americanfootball_ncaa',
