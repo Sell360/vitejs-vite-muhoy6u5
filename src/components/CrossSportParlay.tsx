@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, PlayerProp } from '../services/api';
+import { AIScanner } from './AIScanner';
+import { PublicBetting } from './PublicBetting';
 
 const C = {
   bg: '#050810', surface: '#0d1117', card: '#111827',
@@ -62,6 +64,7 @@ function parlayConfidence(legs: ParlayLeg[]): { score: number; rating: string; c
 
 export function CrossSportParlay() {
   const [activeSport, setActiveSport] = useState<Sport>('mlb');
+  const [leftView, setLeftView] = useState<'props' | 'public'>('props');
   const [allSportProps, setAllSportProps] = useState<Partial<Record<Sport, PlayerProp[]>>>({});
   const [loading, setLoading] = useState<Partial<Record<Sport, boolean>>>({});
   const [legs, setLegs] = useState<ParlayLeg[]>([]);
@@ -117,19 +120,26 @@ export function CrossSportParlay() {
       {/* LEFT — Sport selector + props */}
       <div>
         {/* Mode toggle */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
           {(['builder', 'pick6'] as const).map(m => (
-            <button key={m} onClick={() => { setMode(m); setLegs([]); }} style={{
+            <button key={m} onClick={() => { setMode(m); setLegs([]); setLeftView('props'); }} style={{
               padding: '8px 20px',
-              background: mode === m ? C.accent : C.card,
-              color: mode === m ? 'white' : C.muted,
-              border: `1px solid ${mode === m ? C.accent : C.border}`,
+              background: mode === m && leftView === 'props' ? C.accent : C.card,
+              color: mode === m && leftView === 'props' ? 'white' : C.muted,
+              border: `1px solid ${mode === m && leftView === 'props' ? C.accent : C.border}`,
               borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
             }}>
               {m === 'builder' ? '⚡ Parlay Builder' : '🎯 Pick 6'}
             </button>
           ))}
-          {mode === 'pick6' && (
+          <button onClick={() => setLeftView(leftView === 'public' ? 'props' : 'public')} style={{
+            padding: '8px 20px',
+            background: leftView === 'public' ? C.yellow + '30' : C.card,
+            color: leftView === 'public' ? C.yellow : C.muted,
+            border: `1px solid ${leftView === 'public' ? C.yellow : C.border}`,
+            borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+          }}>📊 Public Betting %</button>
+          {mode === 'pick6' && leftView === 'props' && (
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: C.muted }}>
               Pick 6 legs: <span style={{ color: legs.length === 6 ? C.green : C.accent, fontWeight: '600' }}>{legs.length}/6</span>
             </div>
@@ -150,17 +160,21 @@ export function CrossSportParlay() {
         </div>
 
         {/* Props list */}
-        {isLoading && (
+        {/* Public Betting view */}
+        {leftView === 'public' && <PublicBetting sport={activeSport} />}
+
+        {/* Props view */}
+        {leftView === 'props' && isLoading && (
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '24px', textAlign: 'center', color: C.muted }}>
             Loading {SPORT_LABELS[activeSport]} props...
           </div>
         )}
-        {!isLoading && currentProps.length === 0 && (
+        {leftView === 'props' && !isLoading && currentProps.length === 0 && (
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '24px', textAlign: 'center', color: C.muted }}>
             No {SPORT_LABELS[activeSport]} props available right now
           </div>
         )}
-        {!isLoading && currentProps.length > 0 && (
+        {leftView === 'props' && !isLoading && currentProps.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '500px', overflowY: 'auto' }}>
             {currentProps.slice(0, 60).map(prop => {
               const overAdded = isLegAdded(prop.id, 'over');
@@ -281,19 +295,10 @@ export function CrossSportParlay() {
               </div>
               <div style={{ marginTop: '8px', fontSize: '11px', color: C.dim, textAlign: 'center' }}>⚠️ Bet responsibly</div>
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{
-                  flex: 1, padding: '8px', background: '#1a3a1a', color: '#4ade80',
-                  border: '1px solid #4ade80', borderRadius: '6px',
-                  fontSize: '11px', fontWeight: '700', textDecoration: 'none',
-                  textAlign: 'center', whiteSpace: 'nowrap',
-                }}>🏈 Bet on DraftKings</a>
-                <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{
-                  flex: 1, padding: '8px', background: '#1a1a3a', color: '#818cf8',
-                  border: '1px solid #818cf8', borderRadius: '6px',
-                  fontSize: '11px', fontWeight: '700', textDecoration: 'none',
-                  textAlign: 'center', whiteSpace: 'nowrap',
-                }}>🎯 Play on PrizePicks</a>
+                <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '8px', background: '#1a3a1a', color: '#4ade80', border: '1px solid #4ade80', borderRadius: '6px', fontSize: '11px', fontWeight: '700', textDecoration: 'none', textAlign: 'center' }}>🏈 Bet on DraftKings</a>
+                <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '8px', background: '#1a1a3a', color: '#818cf8', border: '1px solid #818cf8', borderRadius: '6px', fontSize: '11px', fontWeight: '700', textDecoration: 'none', textAlign: 'center' }}>🎯 Play on PrizePicks</a>
               </div>
+              <AIScanner legs={legs.map(l => ({ playerName: l.prop.playerName, propType: l.prop.propType, line: l.prop.line, pick: l.pick, odds: l.odds, homeTeam: l.prop.homeTeam, awayTeam: l.prop.awayTeam }))} />
             </div>
           )}
         </div>

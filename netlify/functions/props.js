@@ -140,3 +140,6 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+// Public betting percentages handler - added to existing function
+// Fetches from Action Network public data
