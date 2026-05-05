@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ParlayShareCard } from './ParlayShareCard';
 import { CorrelationStacker } from './CorrelationStacker';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
+import { getEdgeContext, applyEdgeContext } from '../services/edgeSignals';
 
 interface ParlayLeg {
   prop: PlayerProp & {
@@ -104,6 +105,18 @@ function scoreLeg(
   const reasons: string[] = [];
 
   const game = games.find(g => g.id === prop.gameId);
+
+  // ── 0. JETLAG / TIMEZONE & WORKLOAD EDGES (new) ─────────────────────────
+  if (game && prop.team) {
+    const ctx = getEdgeContext(game.awayTeam, game.homeTeam, sport, game.startTime);
+    const { delta, flags: edgeFlags } = applyEdgeContext(ctx, prop.team, game.homeTeam, pick, prop.propType);
+    if (delta !== 0) {
+      confidence += delta;
+      if (edgeFlags.length > 0) flags.push(...edgeFlags);
+      if (ctx.timezone.hasEdge) reasons.push('timezone factor');
+      if (ctx.workload.hasEdge) reasons.push('rest advantage');
+    }
+  }
 
   // ── 1. KALSHI DIVERGENCE — the secret edge ─────────────────────────────
   if (prop.kalshiEdge) {
@@ -579,7 +592,7 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
       <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,255,255,.015)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 8 }}>
         <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6 }}>Edge signals</div>
         <div style={{ display: 'flex', gap: '8px 14px', flexWrap: 'wrap', fontSize: 11, color: '#1e3a60', fontWeight: 600 }}>
-          {['🎯 Kalshi divergence','💰 Sharp money','📈 +EV vs book','🔴 Park factors','⚖ Umpire zone','💨 Wind','⚡ Pace','📊 Market inefficiency','🚑 Injury filter'].map(s => (
+          {['🎯 Kalshi divergence','💰 Sharp money','📈 +EV vs book','🔴 Park factors','⚖ Umpire zone','💨 Wind','⚡ Pace','📊 Market inefficiency','🚑 Injury filter','✈️ Timezone disadvantage','😴 Back-to-back fatigue','💪 Rest advantage'].map(s => (
             <span key={s}>{s}</span>
           ))}
         </div>

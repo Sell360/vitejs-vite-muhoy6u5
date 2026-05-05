@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
 import { GameProjection } from './GameProjection';
+import { getTimezoneEdge } from '../services/edgeSignals';
 import { ParlayShareCard } from './ParlayShareCard';
 
 interface OddsBoardProps {
@@ -203,6 +204,19 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
               {mlb?.weather && (
                 <div style={{ fontSize: 9, color: '#1a3060', marginTop: 1 }}>💨 {mlb.weather.windSpeed}mph · {mlb.weather.temperature}°F</div>
               )}
+              {(() => {
+                const tz = getTimezoneEdge(game.awayTeam, game.homeTeam, game.startTime);
+                if (!tz.hasEdge) return null;
+                const tzColor = tz.severity === 'severe' ? '#f87171' : tz.severity === 'moderate' ? '#fbbf24' : '#64748b';
+                return (
+                  <div title={tz.reason} style={{
+                    fontSize: 9, color: tzColor, marginTop: 2, fontWeight: 700,
+                    fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: .3,
+                    background: `${tzColor}15`, border: `1px solid ${tzColor}30`,
+                    padding: '1px 5px', borderRadius: 3, display: 'inline-block',
+                  }}>{tz.flag}</div>
+                );
+              })()}
               <div style={{ marginTop: 5 }}>
                 <GameProjection
                   game={game}
