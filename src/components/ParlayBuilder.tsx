@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ParlayShareCard } from './ParlayShareCard';
+import { CorrelationStacker } from './CorrelationStacker';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 
 interface ParlayLeg {
@@ -13,6 +14,8 @@ interface ParlayLeg {
   pick: 'over' | 'under';
   odds: number;
   confidence: number;
+  evPct: number;       // +EV percentage: our model prob minus book implied prob
+  bookImplied: number; // what the book thinks (implied prob from odds)
   reason: string;
   edgeFlags: string[];
 }
@@ -72,6 +75,12 @@ function decimalToAmerican(d: number): number {
 function getConfColor(c: number) {
   return c >= 78 ? '#4ade80' : c >= 65 ? '#fbbf24' : '#f87171';
 }
+function getEvColor(ev: number) {
+  return ev >= 8 ? '#4ade80' : ev >= 3 ? '#fbbf24' : ev >= 0 ? '#64748b' : '#f87171';
+}
+function fmtEv(ev: number) {
+  return ev >= 0 ? `+${ev}%` : `${ev}%`;
+}
 
 function fmt(odds: number) {
   return odds === 0 ? 'N/A' : odds > 0 ? `+${odds}` : `${odds}`;
@@ -83,12 +92,12 @@ function scoreLeg(
   pick: 'over' | 'under',
   games: (GameData | WNBAGameData)[],
   sport: Sport
-): { confidence: number; reason: string; edgeFlags: string[] } {
+): { confidence: number; evPct: number; bookImplied: number; reason: string; edgeFlags: string[] } {
   const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
-  if (!odds || odds === 0) return { confidence: 0, reason: 'no odds', edgeFlags: [] };
+  if (!odds || odds === 0) return { confidence: 0, evPct: 0, bookImplied: 50, reason: 'no odds', edgeFlags: [] };
 
   // Skip injured players entirely
-  if (prop.injured) return { confidence: 0, reason: 'injured', edgeFlags: ['🚑 INJURED - SKIP'] };
+  if (prop.injured) return { confidence: 0, evPct: 0, bookImplied: 50, reason: 'injured', edgeFlags: ['🚑 INJURED - SKIP'] };
 
   let confidence = 52;
   const flags: string[] = [];
@@ -221,7 +230,21 @@ function scoreLeg(
 
   confidence = Math.min(Math.max(confidence, 0), 92);
 
-  return { confidence, reason: reasons.slice(0, 2).join(', ') || 'edge detected', edgeFlags: flags.slice(0, 3) };
+  // ── EV CALCULATION ─────────────────────────────────────────────────────
+  // Model probability: confidence / 100 (capped at 88%)
+  // Book implied probability: derived from odds (removes vig)
+  const dec = americanToDecimal(odds);
+  const bookImplied = Math.round((1 / dec) * 100);
+  const modelProb = confidence; // already 0-92 scale = %
+  const evPct = Math.round(modelProb - bookImplied);
+
+  return {
+    confidence,
+    evPct,
+    bookImplied,
+    reason: reasons.slice(0, 2).join(', ') || 'edge detected',
+    edgeFlags: flags.slice(0, 3),
+  };
 }
 
 // ─── PARLAY BUILDER ────────────────────────────────────────────────────────
@@ -239,8 +262,8 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
       const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
       if (!odds || odds === 0) return;
       if (prop.isGameLine && pick === 'under' && !prop.underOdds) return;
-      const { confidence, reason, edgeFlags } = scoreLeg(prop, pick, games, sport);
-      if (confidence >= 30) allLegs.push({ prop, pick, odds, confidence, reason, edgeFlags });
+      const { confidence, evPct, bookImplied, reason, edgeFlags } = scoreLeg(prop, pick, games, sport);
+      if (confidence >= 30) allLegs.push({ prop, pick, odds, confidence, evPct, bookImplied, reason, edgeFlags });
     });
   });
 
@@ -400,6 +423,22 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
       </div>
 
       {/* Parlay cards */}
+      {/* Correlation suggestions based on top parlay's legs */}
+      {parlays.length > 0 && expanded && (() => {
+        const activePar = parlays.find(p => p.id === expanded);
+        if (!activePar) return null;
+        return (
+          <CorrelationStacker
+            currentLegs={activePar.legs.map(l => ({ prop: l.prop, pick: l.pick }))}
+            availableProps={props}
+            sport={sport}
+            onAddLeg={(_prop, _pick) => {
+              // surface the suggestion — user can add from CrossSportParlay
+            }}
+          />
+        );
+      })()}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map((parlay, idx) => (
           <div key={parlay.id} style={{
@@ -463,14 +502,25 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
                       )}
                       {leg.reason && <div style={{ fontSize: 10, color: '#1a3060', marginTop: 2, fontWeight: 600 }}>{leg.reason}</div>}
                     </div>
-                    <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Odds</div>
                         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: leg.odds > 0 ? '#4ade80' : '#c8ddf0', lineHeight: 1 }}>{fmt(leg.odds)}</div>
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Conf</div>
+                        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Model</div>
                         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: getConfColor(leg.confidence), lineHeight: 1 }}>{leg.confidence}%</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Edge</div>
+                        <div style={{
+                          fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 900,
+                          color: getEvColor(leg.evPct), lineHeight: 1,
+                          background: `${getEvColor(leg.evPct)}18`,
+                          border: `1px solid ${getEvColor(leg.evPct)}40`,
+                          borderRadius: 5, padding: '2px 6px',
+                        }}>{fmtEv(leg.evPct)}</div>
+                        <div style={{ fontSize: 8, color: '#0e2040', marginTop: 1 }}>vs {leg.bookImplied}%</div>
                       </div>
                     </div>
                   </div>

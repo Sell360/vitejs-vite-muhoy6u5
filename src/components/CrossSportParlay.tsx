@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, PlayerProp } from '../services/api';
 import { AIScanner } from './AIScanner';
+import { CorrelationStacker } from './CorrelationStacker';
 import { ParlayShareCard } from './ParlayShareCard';
 import { PublicBetting } from './PublicBetting';
 
@@ -420,6 +421,16 @@ export function CrossSportParlay() {
             })}
           </div>
 
+          {legs.length > 0 && (
+            <div style={{ padding: '0 10px 4px' }}>
+              <CorrelationStacker
+                currentLegs={legs.map(l => ({ prop: l.prop, pick: l.pick }))}
+                availableProps={allProps}
+                sport={activeSport}
+                onAddLeg={addLeg}
+              />
+            </div>
+          )}
           {legs.length > 0 && (
             <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,.06)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
