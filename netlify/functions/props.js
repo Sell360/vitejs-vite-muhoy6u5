@@ -1,7 +1,30 @@
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
-// Daily cache — persists for the day, one fetch per sport
-const memCache = {};
+const CACHE_FILE = '/tmp/betz360_cache.json';
+
+function loadCache() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return {};
+    return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  } catch { return {}; }
+}
+
+function saveCache(cache) {
+  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache)); } catch { }
+}
+
+function isCacheValid(entry, ttlMinutes) {
+  if (!entry) return false;
+  const now = Date.now();
+  // Expire at midnight
+  const midnight = new Date();
+  midnight.setHours(24, 0, 0, 0);
+  if (now >= midnight.getTime()) return false;
+  // Check TTL
+  return (now - entry.ts) < ttlMinutes * 60 * 1000;
+}
 
 const PROP_LABELS = {
   batter_hits: 'Hits', batter_total_bases: 'Total Bases', pitcher_strikeouts: 'Strikeouts',
@@ -50,9 +73,11 @@ exports.handler = async (event) => {
   // Cache key includes date — auto-expires daily
   const today = new Date().toISOString().split('T')[0];
   const cacheKey = `${sport}-${type || 'props'}-${today}`;
-  if (memCache[cacheKey]) {
-    console.log(`Cache hit: ${cacheKey}`);
-    return { statusCode: 200, headers, body: JSON.stringify(memCache[cacheKey]) };
+  const ttlMinutes = type === 'games' ? 30 : 240; // games: 30min, props: 4hrs
+
+  const cache = loadCache();
+  if (isCacheValid(cache[cacheKey], ttlMinutes)) {
+    return { statusCode: 200, headers, body: JSON.stringify(cache[cacheKey].data) };
   }
 
   const get = (url) => new Promise((resolve, reject) => {
@@ -92,7 +117,7 @@ exports.handler = async (event) => {
         };
       });
 
-      memCache[cacheKey] = games;
+      cache[cacheKey] = { data: games, ts: Date.now() }; saveCache(cache);
       return { statusCode: 200, headers, body: JSON.stringify(games) };
     }
 
@@ -105,7 +130,7 @@ exports.handler = async (event) => {
     ).slice(0, 6); // Max 6 games = max 6 credits
 
     if (events.length === 0) {
-      memCache[cacheKey] = [];
+      cache[cacheKey] = { data: [], ts: Date.now() }; saveCache(cache);
       return { statusCode: 200, headers, body: JSON.stringify([]) };
     }
 
@@ -133,7 +158,7 @@ exports.handler = async (event) => {
       } catch { }
     }));
 
-    if (allProps.length > 0) memCache[cacheKey] = allProps;
+    if (allProps.length > 0) { cache[cacheKey] = { data: allProps, ts: Date.now() }; saveCache(cache); }
     return { statusCode: 200, headers, body: JSON.stringify(allProps) };
 
   } catch (err) {
