@@ -104,10 +104,15 @@ class ApiService {
   gameLinesToProps(lines: GameLine[]): PlayerProp[] {
     const props: PlayerProp[] = [];
     lines.forEach(line => {
-      if (line.homeML) props.push({ id: `gl-${line.id}-homeML`, playerId: '', playerName: line.homeTeam, team: line.homeTeam, propType: 'Moneyline', line: 0, overOdds: line.homeML, underOdds: 0, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
-      if (line.awayML) props.push({ id: `gl-${line.id}-awayML`, playerId: '', playerName: line.awayTeam, team: line.awayTeam, propType: 'Moneyline', line: 0, overOdds: line.awayML, underOdds: 0, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
-      if (line.total && line.overOdds) props.push({ id: `gl-${line.id}-total`, playerId: '', playerName: `${line.awayTeam} @ ${line.homeTeam}`, team: '', propType: 'Game Total', line: line.total, overOdds: line.overOdds, underOdds: line.underOdds || -110, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
-      if (line.homeSpread && line.homeSpreadOdds) props.push({ id: `gl-${line.id}-spread`, playerId: '', playerName: `${line.homeTeam} ${line.homeSpread > 0 ? '+' : ''}${line.homeSpread}`, team: line.homeTeam, propType: 'Spread', line: line.homeSpread, overOdds: line.homeSpreadOdds, underOdds: line.awaySpreadOdds || -110, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true });
+      const base = { playerId: '' as const, gameId: line.id, vendor: line.vendor, homeTeam: line.homeTeam, awayTeam: line.awayTeam, startTime: line.startTime, isGameLine: true as const };
+      // Each ML is its own pick — store odds in overOdds so addLeg('over') works
+      if (line.homeML) props.push({ ...base, id: `gl-${line.id}-homeML`, playerName: line.homeTeam, team: line.homeTeam, propType: 'Moneyline', line: 0, overOdds: line.homeML, underOdds: line.homeML });
+      if (line.awayML) props.push({ ...base, id: `gl-${line.id}-awayML`, playerName: line.awayTeam, team: line.awayTeam, propType: 'Moneyline', line: 0, overOdds: line.awayML, underOdds: line.awayML });
+      // Game total — over/under on same prop
+      if (line.total && line.overOdds) props.push({ ...base, id: `gl-${line.id}-total`, playerName: `${line.awayTeam} @ ${line.homeTeam}`, team: '', propType: 'Game Total', line: line.total, overOdds: line.overOdds, underOdds: line.underOdds || -110 });
+      // Each spread is its own prop — pick 'over' to take that side
+      if (line.homeSpread !== null && line.homeSpreadOdds) props.push({ ...base, id: `gl-${line.id}-homeSpread`, playerName: `${line.homeTeam} ${(line.homeSpread ?? 0) >= 0 ? '+' : ''}${line.homeSpread}`, team: line.homeTeam, propType: 'Spread', line: line.homeSpread ?? 0, overOdds: line.homeSpreadOdds, underOdds: line.homeSpreadOdds });
+      if (line.awaySpread !== null && line.awaySpreadOdds) props.push({ ...base, id: `gl-${line.id}-awaySpread`, playerName: `${line.awayTeam} ${(line.awaySpread ?? 0) >= 0 ? '+' : ''}${line.awaySpread}`, team: line.awayTeam, propType: 'Spread', line: line.awaySpread ?? 0, overOdds: line.awaySpreadOdds, underOdds: line.awaySpreadOdds });
     });
     return props;
   }

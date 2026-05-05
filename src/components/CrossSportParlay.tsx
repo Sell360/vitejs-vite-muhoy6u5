@@ -247,88 +247,66 @@ export function CrossSportParlay() {
               🏟 Game Bets — Moneyline · Spread · Total
             </div>
             {Object.values(gameGroups).map((gameBets, gi) => {
-              const ml = gameBets.filter(p => p.propType === 'Moneyline');
+              const ml    = gameBets.filter(p => p.propType === 'Moneyline');
               const spread = gameBets.filter(p => p.propType === 'Spread');
-              const total = gameBets.filter(p => p.propType === 'Game Total');
+              const total  = gameBets.filter(p => p.propType === 'Game Total');
               const matchup = `${gameBets[0].awayTeam} @ ${gameBets[0].homeTeam}`;
+
+              // Each ML/spread prop is its own pick — always use 'over' (odds stored in overOdds)
+              const BetBtn = ({ prop, label, color = '#c8ddf0' }: { prop: PlayerProp; label: string; color?: string }) => {
+                const added = isLegAdded(prop.id, 'over');
+                const odds = prop.overOdds || 0;
+                return (
+                  <button onClick={() => addLeg(prop, 'over')} style={{
+                    flex: 1, padding: '9px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
+                    background: added ? 'rgba(14,165,233,.18)' : 'rgba(255,255,255,.03)',
+                    border: `1px solid ${added ? 'rgba(14,165,233,.4)' : 'rgba(255,255,255,.08)'}`,
+                    fontFamily: "'Barlow', sans-serif", transition: 'all .15s', minWidth: 0,
+                  }}>
+                    <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prop.playerName}</div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 900, color: odds > 0 ? '#4ade80' : '#dce6f0', marginTop: 1 }}>{fmt(odds)}</div>
+                  </button>
+                );
+              };
+
               return (
                 <div key={gi} style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
                   <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: '#c8ddf0', letterSpacing: .3, marginBottom: 10 }}>
                     {matchup}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
-                    {/* Moneylines */}
-                    {ml.map(prop => {
-                      const added = isLegAdded(prop.id, 'over');
-                      return (
-                        <button key={prop.id} onClick={() => addLeg(prop, 'over')} style={{
-                          padding: '8px 12px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                          background: added ? 'rgba(14,165,233,.15)' : 'rgba(255,255,255,.03)',
-                          border: `1px solid ${added ? 'rgba(14,165,233,.35)' : 'rgba(255,255,255,.07)'}`,
-                          fontFamily: "'Barlow', sans-serif", transition: 'all .15s',
-                        }}>
-                          <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', marginBottom: 2 }}>ML</div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: '#c8ddf0' }}>{prop.playerName}</span>
-                            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: (prop.overOdds || 0) > 0 ? '#4ade80' : '#c8ddf0' }}>{fmt(prop.overOdds || 0)}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                    {/* Spreads */}
-                    {spread.map(prop => {
-                      const overAdded = isLegAdded(prop.id, 'over');
-                      const underAdded = isLegAdded(prop.id, 'under');
-                      return (
-                        <div key={prop.id} style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => addLeg(prop, 'over')} style={{
-                            flex: 1, padding: '8px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                            background: overAdded ? 'rgba(14,165,233,.15)' : 'rgba(255,255,255,.03)',
-                            border: `1px solid ${overAdded ? 'rgba(14,165,233,.35)' : 'rgba(255,255,255,.07)'}`,
-                            fontFamily: "'Barlow', sans-serif", transition: 'all .15s',
-                          }}>
-                            <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', marginBottom: 2 }}>SPREAD</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#c8ddf0' }}>{prop.playerName}</div>
-                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 900, color: (prop.overOdds || 0) > 0 ? '#4ade80' : '#c8ddf0' }}>{fmt(prop.overOdds || 0)}</div>
-                          </button>
-                          <button onClick={() => addLeg(prop, 'under')} style={{
-                            flex: 1, padding: '8px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                            background: underAdded ? 'rgba(14,165,233,.15)' : 'rgba(255,255,255,.03)',
-                            border: `1px solid ${underAdded ? 'rgba(14,165,233,.35)' : 'rgba(255,255,255,.07)'}`,
-                            fontFamily: "'Barlow', sans-serif", transition: 'all .15s',
-                          }}>
-                            <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', marginBottom: 2 }}>SPREAD</div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: '#c8ddf0' }}>Away</div>
-                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 900, color: (prop.underOdds || 0) > 0 ? '#4ade80' : '#c8ddf0' }}>{fmt(prop.underOdds || 0)}</div>
-                          </button>
-                        </div>
-                      );
-                    })}
-                    {/* Game Total */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {/* Moneylines — one button per team */}
+                    {ml.map(prop => <BetBtn key={prop.id} prop={prop} label="ML" />)}
+
+                    {/* Spreads — one button per team */}
+                    {spread.map(prop => <BetBtn key={prop.id} prop={prop} label="SPREAD" />)}
+
+                    {/* Game Total — over and under as separate bets */}
                     {total.map(prop => {
-                      const overAdded = isLegAdded(prop.id, 'over');
+                      const overAdded  = isLegAdded(prop.id, 'over');
                       const underAdded = isLegAdded(prop.id, 'under');
                       return (
-                        <div key={prop.id} style={{ display: 'flex', gap: 4 }}>
+                        <div key={prop.id} style={{ display: 'flex', gap: 6, flex: '1 1 200px' }}>
                           <button onClick={() => addLeg(prop, 'over')} style={{
-                            flex: 1, padding: '8px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                            background: overAdded ? 'rgba(74,222,128,.12)' : 'rgba(255,255,255,.03)',
-                            border: `1px solid ${overAdded ? 'rgba(74,222,128,.28)' : 'rgba(255,255,255,.07)'}`,
+                            flex: 1, padding: '9px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
+                            background: overAdded ? 'rgba(74,222,128,.15)' : 'rgba(255,255,255,.03)',
+                            border: `1px solid ${overAdded ? 'rgba(74,222,128,.35)' : 'rgba(255,255,255,.08)'}`,
                             fontFamily: "'Barlow', sans-serif", transition: 'all .15s',
                           }}>
-                            <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', marginBottom: 2 }}>O/U {prop.line}</div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#4ade80' }}>OVER</div>
-                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 900, color: '#4ade80' }}>{fmt(prop.overOdds || 0)}</div>
+                            <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', marginBottom: 3 }}>OVER {prop.line}</div>
+                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800, color: '#4ade80' }}>Over</div>
+                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 900, color: '#4ade80' }}>{fmt(prop.overOdds || 0)}</div>
                           </button>
                           <button onClick={() => addLeg(prop, 'under')} style={{
-                            flex: 1, padding: '8px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
-                            background: underAdded ? 'rgba(248,113,113,.12)' : 'rgba(255,255,255,.03)',
-                            border: `1px solid ${underAdded ? 'rgba(248,113,113,.28)' : 'rgba(255,255,255,.07)'}`,
+                            flex: 1, padding: '9px 10px', borderRadius: 7, cursor: 'pointer', textAlign: 'left',
+                            background: underAdded ? 'rgba(248,113,113,.15)' : 'rgba(255,255,255,.03)',
+                            border: `1px solid ${underAdded ? 'rgba(248,113,113,.35)' : 'rgba(255,255,255,.08)'}`,
                             fontFamily: "'Barlow', sans-serif", transition: 'all .15s',
                           }}>
-                            <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', marginBottom: 2 }}>O/U {prop.line}</div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#f87171' }}>UNDER</div>
-                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 15, fontWeight: 900, color: '#f87171' }}>{fmt(prop.underOdds || 0)}</div>
+                            <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase', marginBottom: 3 }}>UNDER {prop.line}</div>
+                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800, color: '#f87171' }}>Under</div>
+                            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 17, fontWeight: 900, color: '#f87171' }}>{fmt(prop.underOdds || -110)}</div>
                           </button>
                         </div>
                       );
