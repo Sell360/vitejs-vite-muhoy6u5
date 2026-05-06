@@ -78,6 +78,9 @@ export async function logBet(
 }
 
 // ─── BET SETTLEMENT ───────────────────────────────────────────────────────
+// Uses the settle_bet_and_update_bankroll Postgres function which runs with
+// elevated privileges to update the user's bankroll atomically. This bypasses
+// the admin-only RLS lockdown on the profiles table for bet payouts only.
 export async function settleBet(
   betId: string,
   result: 'won' | 'lost' | 'push' | 'cashed'
@@ -92,27 +95,14 @@ export async function settleBet(
     payout = bet.stake;
   }
 
-  const { error } = await supabase
-    .from('mock_bets')
-    .update({ status: result, payout, settled_at: new Date().toISOString() })
-    .eq('id', betId);
+  // Call the SECURITY DEFINER function
+  const { error } = await supabase.rpc('settle_bet_and_update_bankroll', {
+    p_bet_id: betId,
+    p_status: result,
+    p_payout: payout,
+  });
 
   if (error) return { error: error.message };
-
-  // Update user bankroll: add (payout - stake) to bankroll
-  const profitDelta = payout - bet.stake;
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('bankroll')
-    .eq('id', bet.user_id)
-    .single();
-  if (profile) {
-    await supabase
-      .from('profiles')
-      .update({ bankroll: profile.bankroll + profitDelta })
-      .eq('id', bet.user_id);
-  }
-
   return { error: null };
 }
 
