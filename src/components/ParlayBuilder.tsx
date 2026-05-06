@@ -305,6 +305,8 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
       const usedTeams = new Set<string>();
       const usedGames = new Set<string>();
       const legs: ParlayLeg[] = [];
+      let underdogCount = 0;
+      const MAX_DOGS = 2;
 
       for (const leg of pool) {
         if (legs.length >= size) break;
@@ -317,10 +319,13 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
         if (team && usedTeams.has(team)) continue;
         // Allow max 1 leg per game to avoid correlated same-game parlays
         if (gameId && usedGames.has(gameId) && legs.length < size) continue;
+        // Sportsbook rule: max 2 underdogs (positive odds) per parlay
+        if (leg.odds > 0 && underdogCount >= MAX_DOGS) continue;
 
         usedPlayers.add(playerKey);
         if (team) usedTeams.add(team);
         if (gameId) usedGames.add(gameId);
+        if (leg.odds > 0) underdogCount++;
         legs.push(leg);
       }
 
@@ -329,14 +334,17 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
         const usedPlayers2 = new Set<string>();
         const usedTeams2 = new Set<string>();
         const legs2: ParlayLeg[] = [];
+        let dogs2 = 0;
         for (const leg of pool) {
           if (legs2.length >= size) break;
           const playerKey = `${leg.prop.playerName}-${leg.prop.propType}`;
           const team = leg.prop.team || '';
           if (usedPlayers2.has(playerKey)) continue;
           if (team && usedTeams2.has(team)) continue;
+          if (leg.odds > 0 && dogs2 >= MAX_DOGS) continue;
           usedPlayers2.add(playerKey);
           if (team) usedTeams2.add(team);
+          if (leg.odds > 0) dogs2++;
           legs2.push(leg);
         }
         if (legs2.length > legs.length) legs.splice(0, legs.length, ...legs2);

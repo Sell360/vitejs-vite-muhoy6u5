@@ -7,6 +7,7 @@ import type { Sport, PlayerProp } from './services/api';
 import { BetTracker } from './components/BetTracker';
 import { OddsBoard } from './components/OddsBoard';
 import { Leaderboard } from './components/Leaderboard';
+import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { useAuth } from './contexts/AuthContext';
 
@@ -27,9 +28,9 @@ export default function Betz360() {
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string|null>(null);
   const [propView, setPropView] = useState<'parlay'|'props'>('parlay');
-  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'>('parlays');
+  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'|'admin'>('parlays');
   const [authOpen, setAuthOpen] = useState(false);
-  const { user, username } = useAuth();
+  const { user, username, isAdmin } = useAuth();
   const [aiOpen, setAiOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, lastUpdated } = useRealTimeData(sport);
@@ -366,8 +367,8 @@ export default function Betz360() {
             ))}
             <div className="b360-sep"/>
             {/* Nav tabs inline on desktop */}
-            {(['games','parlays','cross','tracker','board'] as const).map(t => {
-              const labels:{[k:string]:string} = {games:'🏟 Games',parlays:'⚡ Parlays',cross:'🌐 Multi-Sport',tracker:'📊 Tracker',board:'🏆 Leaderboard'};
+            {((isAdmin ? (['games','parlays','cross','tracker','board','admin'] as const) : (['games','parlays','cross','tracker','board'] as const)) as readonly typeof tab[]).map(t => {
+              const labels:{[k:string]:string} = {games:'🏟 Games',parlays:'⚡ Parlays',cross:'🌐 Multi-Sport',tracker:'📊 Tracker',board:'🏆 Leaderboard',admin:'🛡 Admin'};
               return (
                 <button
                   key={t}
@@ -498,6 +499,13 @@ export default function Betz360() {
           <div>
             <div className="b360-slabel" style={{marginBottom:14}}>Leaderboard — Top Sharp Bettors</div>
             <Leaderboard/>
+          </div>
+        )}
+
+        {tab==='admin' && (
+          <div>
+            <div className="b360-slabel" style={{marginBottom:14}}>Admin — User Management</div>
+            <AdminPanel/>
           </div>
         )}
       </main>

@@ -3,6 +3,7 @@ import { apiService } from '../services/api';
 import type { Sport, PlayerProp } from '../services/api';
 import { AIScanner } from './AIScanner';
 import { CorrelationStacker } from './CorrelationStacker';
+import { wouldExceedUnderdogCap, MAX_UNDERDOGS_PER_PARLAY } from '../services/mockBets';
 import { ParlayShareCard } from './ParlayShareCard';
 import { PublicBetting } from './PublicBetting';
 
@@ -92,6 +93,7 @@ export function CrossSportParlay() {
   const [allSportProps, setAllSportProps] = useState<Partial<Record<Sport, PlayerProp[]>>>({});
   const [loading, setLoading] = useState<Partial<Record<Sport, boolean>>>({});
   const [legs, setLegs] = useState<ParlayLeg[]>([]);
+  const [underdogWarning, setUnderdogWarning] = useState('');
   const [mode, setMode] = useState<'builder' | 'pick6'>('builder');
   const [stake, setStake] = useState('25');
 
@@ -123,6 +125,12 @@ export function CrossSportParlay() {
       const exists = prev.findIndex(l => l.prop.id === prop.id && l.pick === pick);
       if (exists >= 0) return prev.filter((_, i) => i !== exists);
       if (mode === 'pick6' && prev.length >= 6) return prev;
+      // Sportsbook rule: max 2 underdogs per parlay (Pick 6 mode is exempt — DFS-style picks)
+      if (mode === 'builder' && wouldExceedUnderdogCap(prev, odds)) {
+        setUnderdogWarning(`Max ${MAX_UNDERDOGS_PER_PARLAY} underdogs per parlay`);
+        setTimeout(() => setUnderdogWarning(''), 3500);
+        return prev;
+      }
       return [...prev, { prop, pick, odds, sport: activeSport }];
     });
   }, [activeSport, mode]);
@@ -365,14 +373,36 @@ export function CrossSportParlay() {
       {/* ── RIGHT: Slip ── */}
       <div style={{ position: 'sticky', top: 70 }}>
         <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 800, color: '#c8ddf0' }}>
-              {mode === 'pick6' ? '🎯 Pick 6 Slip' : '⚡ Parlay Slip'}
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 800, color: '#c8ddf0' }}>
+                {mode === 'pick6' ? '🎯 Pick 6 Slip' : '⚡ Parlay Slip'}
+              </div>
+              {mode === 'builder' && legs.filter(l => l.odds > 0).length > 0 && (() => {
+                const dogs = legs.filter(l => l.odds > 0).length;
+                return (
+                  <span title="Underdog count (max 2 per parlay in Builder mode)" style={{
+                    background: dogs >= MAX_UNDERDOGS_PER_PARLAY ? 'rgba(248,113,113,.15)' : 'rgba(251,191,36,.12)',
+                    color: dogs >= MAX_UNDERDOGS_PER_PARLAY ? '#f87171' : '#fbbf24',
+                    border: `1px solid ${dogs >= MAX_UNDERDOGS_PER_PARLAY ? 'rgba(248,113,113,.3)' : 'rgba(251,191,36,.3)'}`,
+                    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 10, fontWeight: 800,
+                    padding: '1px 6px', borderRadius: 4, letterSpacing: .3,
+                  }}>🐕 {dogs}/{MAX_UNDERDOGS_PER_PARLAY}</span>
+                );
+              })()}
             </div>
             {legs.length > 0 && (
               <button onClick={() => setLegs([])} style={{ fontSize: 11, color: '#2a4060', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}>Clear all</button>
             )}
           </div>
+
+          {underdogWarning && (
+            <div style={{
+              margin: '8px 14px 0', padding: '7px 11px',
+              background: 'rgba(248,113,113,.1)', border: '1px solid rgba(248,113,113,.25)',
+              borderRadius: 6, color: '#f87171', fontSize: 11, fontWeight: 700,
+            }}>⚠ {underdogWarning}</div>
+          )}
 
           {legs.length > 0 && (
             <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'rgba(0,0,0,.2)' }}>

@@ -7,6 +7,7 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   username: string | null;
+  isAdmin: boolean;
   signUp: (email: string, password: string, username: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -20,17 +21,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const isConfigured = isSupabaseConfigured();
 
   // Fetch the user's profile (which contains username) from the profiles table
-  const fetchUsername = async (userId: string) => {
+  const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('username')
+      .select('username, is_admin')
       .eq('id', userId)
       .single();
     setUsername(data?.username ?? null);
+    setIsAdmin(data?.is_admin ?? false);
   };
 
   useEffect(() => {
@@ -43,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchUsername(session.user.id);
+      if (session?.user) fetchProfile(session.user.id);
       setLoading(false);
     });
 
@@ -51,8 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchUsername(session.user.id);
-      else setUsername(null);
+      if (session?.user) fetchProfile(session.user.id);
+      else { setUsername(null); setIsAdmin(false); }
     });
 
     return () => subscription.unsubscribe();
@@ -98,10 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isConfigured) return;
     await supabase.auth.signOut();
     setUsername(null);
+    setIsAdmin(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, username, signUp, signIn, signOut, isConfigured }}>
+    <AuthContext.Provider value={{ user, session, loading, username, isAdmin, signUp, signIn, signOut, isConfigured }}>
       {children}
     </AuthContext.Provider>
   );

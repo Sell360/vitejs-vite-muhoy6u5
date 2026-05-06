@@ -217,6 +217,104 @@ export async function getBankroll(userId: string): Promise<number> {
   return data?.bankroll ?? 1000;
 }
 
+// ─── BANKROLL MANAGEMENT ──────────────────────────────────────────────────
+export async function getProfile(userId: string) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('bankroll, starting_bankroll, max_bankroll, is_admin')
+    .eq('id', userId)
+    .single();
+  return data;
+}
+
+// User can reset their own bankroll to their starting amount
+export async function resetBankroll(userId: string): Promise<{ error: string | null }> {
+  const profile = await getProfile(userId);
+  const startAmount = profile?.starting_bankroll ?? 1000;
+  const { error } = await supabase
+    .from('profiles')
+    .update({ bankroll: startAmount })
+    .eq('id', userId);
+  return { error: error?.message ?? null };
+}
+
+// User can set a custom starting bankroll (subject to admin max if set)
+export async function setStartingBankroll(userId: string, amount: number): Promise<{ error: string | null }> {
+  if (amount < 100 || amount > 1000000) {
+    return { error: 'Starting bankroll must be between $100 and $1,000,000' };
+  }
+  const profile = await getProfile(userId);
+  if (profile?.max_bankroll && amount > profile.max_bankroll) {
+    return { error: `Admin has set a max bankroll of $${profile.max_bankroll}` };
+  }
+  const { error } = await supabase
+    .from('profiles')
+    .update({ starting_bankroll: amount, bankroll: amount })
+    .eq('id', userId);
+  return { error: error?.message ?? null };
+}
+
+// ─── ADMIN FUNCTIONS ──────────────────────────────────────────────────────
+export interface AdminUser {
+  id: string;
+  username: string;
+  bankroll: number;
+  starting_bankroll: number;
+  max_bankroll: number | null;
+  is_admin: boolean;
+  total_bets: number;
+  created_at: string;
+}
+
+export async function getAllUsers(): Promise<AdminUser[]> {
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, username, bankroll, starting_bankroll, max_bankroll, is_admin, created_at')
+    .order('created_at', { ascending: false });
+  if (!profiles) return [];
+
+  const result: AdminUser[] = [];
+  for (const p of profiles) {
+    const { count } = await supabase
+      .from('mock_bets')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', p.id);
+    result.push({ ...p, total_bets: count || 0 });
+  }
+  return result;
+}
+
+export async function adminSetUserLimit(userId: string, maxBankroll: number | null): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ max_bankroll: maxBankroll })
+    .eq('id', userId);
+  return { error: error?.message ?? null };
+}
+
+export async function adminAdjustBankroll(userId: string, newBankroll: number): Promise<{ error: string | null }> {
+  if (newBankroll < 0) return { error: 'Bankroll cannot be negative' };
+  const { error } = await supabase
+    .from('profiles')
+    .update({ bankroll: newBankroll })
+    .eq('id', userId);
+  return { error: error?.message ?? null };
+}
+
+// ─── UNDERDOG CAP HELPER ──────────────────────────────────────────────────
+// Standard sportsbook rule: max 2 underdogs per parlay (positive odds = underdog).
+// Returns whether adding this leg would violate the cap.
+export const MAX_UNDERDOGS_PER_PARLAY = 2;
+
+export function countUnderdogs(legs: { odds: number }[]): number {
+  return legs.filter(l => l.odds > 0).length;
+}
+
+export function wouldExceedUnderdogCap(currentLegs: { odds: number }[], newOdds: number): boolean {
+  if (newOdds <= 0) return false; // adding a favorite is always fine
+  return countUnderdogs(currentLegs) >= MAX_UNDERDOGS_PER_PARLAY;
+}
+
 // ─── LEADERBOARD ──────────────────────────────────────────────────────────
 export interface LeaderboardEntry {
   username: string;

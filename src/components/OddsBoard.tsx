@@ -5,7 +5,7 @@ import { GameProjection } from './GameProjection';
 import { getTimezoneEdge } from '../services/edgeSignals';
 import { ParlayShareCard } from './ParlayShareCard';
 import { useAuth } from '../contexts/AuthContext';
-import { logBet } from '../services/mockBets';
+import { logBet, wouldExceedUnderdogCap, MAX_UNDERDOGS_PER_PARLAY } from '../services/mockBets';
 
 interface OddsBoardProps {
   sport: Sport;
@@ -123,6 +123,8 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
       .finally(() => setLinesLoading(false));
   }, [sport]);
 
+  const [underdogWarning, setUnderdogWarning] = useState('');
+
   const isAdded = useCallback((gameId: string, betType: string, side: string) =>
     slip.some(l => l.gameId === gameId && l.betType === betType && l.side === side),
     [slip]
@@ -131,7 +133,13 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
   const toggleLeg = useCallback((leg: BetSlipLeg) => {
     setSlip(prev => {
       const exists = prev.findIndex(l => l.gameId === leg.gameId && l.betType === leg.betType && l.side === leg.side);
-      if (exists >= 0) return prev.filter((_, i) => i !== exists);
+      if (exists >= 0) return prev.filter((_, i) => i !== exists); // removing always allowed
+      // Enforce sportsbook-style underdog cap on adds
+      if (wouldExceedUnderdogCap(prev, leg.odds)) {
+        setUnderdogWarning(`Maximum ${MAX_UNDERDOGS_PER_PARLAY} underdogs (positive odds) per parlay`);
+        setTimeout(() => setUnderdogWarning(''), 3500);
+        return prev;
+      }
       setSlipOpen(true);
       return [...prev, leg];
     });
@@ -325,6 +333,19 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                   {fmt(combinedOdds)}
                 </span>
               )}
+              {(() => {
+                const dogs = slip.filter(l => l.odds > 0).length;
+                if (dogs === 0) return null;
+                return (
+                  <span title="Underdog count (max 2 per parlay)" style={{
+                    background: dogs >= MAX_UNDERDOGS_PER_PARLAY ? 'rgba(248,113,113,.15)' : 'rgba(251,191,36,.12)',
+                    color: dogs >= MAX_UNDERDOGS_PER_PARLAY ? '#f87171' : '#fbbf24',
+                    border: `1px solid ${dogs >= MAX_UNDERDOGS_PER_PARLAY ? 'rgba(248,113,113,.3)' : 'rgba(251,191,36,.3)'}`,
+                    fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 800,
+                    padding: '1px 7px', borderRadius: 4, letterSpacing: .3,
+                  }}>🐕 {dogs}/{MAX_UNDERDOGS_PER_PARLAY} dogs</span>
+                );
+              })()}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {slip.length > 0 && (
@@ -339,6 +360,16 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
           {/* Slip body */}
           {slipOpen && (
             <div style={{ padding: '0 20px 16px', maxHeight: '50vh', overflowY: 'auto' }}>
+              {underdogWarning && (
+                <div style={{
+                  margin: '8px 0', padding: '8px 12px',
+                  background: 'rgba(248,113,113,.1)', border: '1px solid rgba(248,113,113,.25)',
+                  borderRadius: 7, color: '#f87171', fontSize: 12, fontWeight: 700,
+                  fontFamily: "'Barlow', sans-serif",
+                }}>
+                  ⚠ {underdogWarning}
+                </div>
+              )}
               {/* Legs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
                 {slip.map((leg, i) => (

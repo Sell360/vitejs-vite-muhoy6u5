@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserBets, getUserStats, getBankroll, settleBet, snapshotClosingLine, logBet, type MockBet } from '../services/mockBets';
+import { getUserBets, getUserStats, getBankroll, getProfile, settleBet, snapshotClosingLine, logBet, resetBankroll, setStartingBankroll, type MockBet } from '../services/mockBets';
 import { AuthModal } from './AuthModal';
 
 interface Stats {
@@ -26,6 +26,8 @@ export function BetTracker() {
   const [bankroll, setBankrollState] = useState<number>(1000);
   const [loading, setLoading] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
+  const [showBankrollModal, setShowBankrollModal] = useState(false);
+  const [maxBankroll, setMaxBankroll] = useState<number | null>(null);
 
   // Manual log form fields
   const [form, setForm] = useState({
@@ -37,14 +39,16 @@ export function BetTracker() {
   const refreshData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [bz, st, br] = await Promise.all([
+    const [bz, st, br, pr] = await Promise.all([
       getUserBets(user.id, 50),
       getUserStats(user.id),
       getBankroll(user.id),
+      getProfile(user.id),
     ]);
     setBets(bz);
     setStats(st);
     setBankrollState(br);
+    setMaxBankroll(pr?.max_bankroll ?? null);
     setLoading(false);
   }, [user]);
 
@@ -145,10 +149,20 @@ export function BetTracker() {
           <div style={{ fontSize: 11, color: '#1a3060', fontWeight: 600 }}>Practice account · Mock bets only</div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <div style={{ background: 'rgba(74,222,128,.08)', border: '1px solid rgba(74,222,128,.2)', borderRadius: 8, padding: '6px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>Bankroll</div>
-            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 900, color: '#4ade80', lineHeight: 1 }}>${bankroll.toFixed(0)}</div>
-          </div>
+          <button
+            onClick={() => setShowBankrollModal(true)}
+            title="Click to adjust bankroll"
+            style={{
+              background: 'rgba(74,222,128,.08)', border: '1px solid rgba(74,222,128,.2)',
+              borderRadius: 8, padding: '6px 14px', textAlign: 'center',
+              cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+            }}
+          >
+            <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+              Bankroll {maxBankroll && <span style={{ color: '#fbbf24' }}>· Max ${maxBankroll}</span>}
+            </div>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 900, color: '#4ade80', lineHeight: 1 }}>${bankroll.toFixed(0)} ⚙</div>
+          </button>
           <button onClick={() => setShowLogModal(true)} style={{
             padding: '8px 16px', borderRadius: 7,
             background: 'linear-gradient(135deg, #0080ff, #0050d0)',
@@ -216,6 +230,87 @@ export function BetTracker() {
           bankroll={bankroll}
         />
       )}
+
+      {/* Bankroll Modal */}
+      {showBankrollModal && user && (
+        <BankrollModal
+          userId={user.id}
+          bankroll={bankroll}
+          maxBankroll={maxBankroll}
+          onClose={() => setShowBankrollModal(false)}
+          onUpdated={async () => { setShowBankrollModal(false); await refreshData(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── BANKROLL MODAL ───────────────────────────────────────────────────────
+function BankrollModal({ userId, bankroll, maxBankroll, onClose, onUpdated }: { userId: string; bankroll: number; maxBankroll: number | null; onClose: () => void; onUpdated: () => void; }) {
+  const [amount, setAmount] = useState(bankroll.toFixed(0));
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleReset = async () => {
+    if (!confirm('Reset bankroll to your starting amount? Bet history will be preserved.')) return;
+    setBusy(true);
+    await resetBankroll(userId);
+    onUpdated();
+  };
+
+  const handleSetAmount = async () => {
+    const num = parseFloat(amount);
+    if (isNaN(num)) { setError('Invalid amount'); return; }
+    setBusy(true);
+    setError('');
+    const { error } = await setStartingBankroll(userId, num);
+    if (error) { setError(error); setBusy(false); return; }
+    onUpdated();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(8px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#070c18', border: '1px solid rgba(74,222,128,.3)', borderRadius: 12, padding: 22, fontFamily: "'Barlow', sans-serif" }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 800, color: '#4ade80', letterSpacing: .3 }}>💰 Bankroll Settings</div>
+            <div style={{ fontSize: 11, color: '#1a3060', fontWeight: 600, marginTop: 1 }}>Current balance: ${bankroll.toFixed(2)}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#1a3060', cursor: 'pointer', fontSize: 22 }}>×</button>
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 8, padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#1a3060', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Set Custom Bankroll</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              min={100}
+              max={maxBankroll || 1000000}
+              style={{ flex: 1, height: 36, background: 'rgba(255,255,255,.04)', color: '#dce6f0', border: '1px solid rgba(255,255,255,.1)', borderRadius: 6, padding: '0 10px', fontSize: 13, fontFamily: "'Barlow', sans-serif", outline: 'none' }}
+            />
+            <button onClick={handleSetAmount} disabled={busy} style={{ padding: '0 18px', background: 'linear-gradient(135deg, #0080ff, #0050d0)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', fontFamily: "'Barlow', sans-serif" }}>
+              {busy ? '...' : 'Set'}
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 600, marginTop: 6 }}>
+            Range: $100 – ${maxBankroll ? maxBankroll.toLocaleString() : '1,000,000'}
+            {maxBankroll && <span style={{ color: '#fbbf24', marginLeft: 6 }}>(admin-capped)</span>}
+          </div>
+          {error && <div style={{ fontSize: 11, color: '#f87171', marginTop: 6, fontWeight: 600 }}>⚠ {error}</div>}
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 8, padding: 14, marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, color: '#1a3060', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>Quick Reset</div>
+          <button onClick={handleReset} disabled={busy} style={{ width: '100%', padding: '8px', background: 'rgba(251,191,36,.1)', color: '#fbbf24', border: '1px solid rgba(251,191,36,.25)', borderRadius: 6, fontSize: 12, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', fontFamily: "'Barlow', sans-serif" }}>
+            ↻ Reset to Starting Bankroll
+          </button>
+          <div style={{ fontSize: 10, color: '#1a3060', fontWeight: 600, marginTop: 6 }}>
+            Your bet history stays — only the balance resets.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
