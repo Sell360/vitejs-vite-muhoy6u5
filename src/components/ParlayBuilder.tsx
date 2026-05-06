@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ParlayShareCard } from './ParlayShareCard';
 import { notifications } from '../services/notifications';
+import { reversalBoost } from '../services/confidenceBoosts';
+import type { ReversalSignal } from '../services/lineMovement';
 import { CorrelationStacker } from './CorrelationStacker';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 import { getEdgeContext, applyEdgeContext } from '../services/edgeSignals';
@@ -93,7 +95,8 @@ function scoreLeg(
   prop: ParlayLeg['prop'],
   pick: 'over' | 'under',
   games: (GameData | WNBAGameData)[],
-  sport: Sport
+  sport: Sport,
+  reversals?: Map<string, ReversalSignal>,
 ): { confidence: number; evPct: number; bookImplied: number; reason: string; edgeFlags: string[] } {
   const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
   if (!odds || odds === 0) return { confidence: 0, evPct: 0, bookImplied: 50, reason: 'no odds', edgeFlags: [] };
@@ -118,6 +121,23 @@ function scoreLeg(
       if (ctx.workload.hasEdge) reasons.push('rest advantage');
     }
   }
+
+  // ── 0b. CASCADE EDGE BOOSTS — reversal/steam + Polymarket (new) ────────
+  // Player props don't directly map to home/away ML, but for over/under
+  // props the reversal of the game total is still a valid signal.
+  if (reversals && prop.gameId) {
+    const sig = reversals.get(prop.gameId);
+    if (sig && sig.market === 'total') {
+      const boost = reversalBoost(sig, pick);
+      if (boost.delta !== 0) {
+        confidence += boost.delta;
+        if (boost.flag) flags.push(boost.flag);
+        if (boost.reason) reasons.push(boost.reason);
+      }
+    }
+  }
+  // Polymarket boost only applies to game-side picks, not player props,
+  // so we skip here. It's wired separately into game-line scoring.
 
   // ── 1. KALSHI DIVERGENCE — the secret edge ─────────────────────────────
   if (prop.kalshiEdge) {
@@ -262,7 +282,12 @@ function scoreLeg(
 }
 
 // ─── PARLAY BUILDER ────────────────────────────────────────────────────────
-function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGameData)[], sport: Sport): Parlay[] {
+function buildAllParlays(
+  props: ParlayLeg['prop'][],
+  games: (GameData | WNBAGameData)[],
+  sport: Sport,
+  reversals?: Map<string, ReversalSignal>,
+): Parlay[] {
   if (props.length === 0) return [];
 
   // Include all non-injured props regardless of game ID matching
@@ -276,7 +301,7 @@ function buildAllParlays(props: ParlayLeg['prop'][], games: (GameData | WNBAGame
       const odds = pick === 'over' ? prop.overOdds : prop.underOdds;
       if (!odds || odds === 0) return;
       if (prop.isGameLine && pick === 'under' && !prop.underOdds) return;
-      const { confidence, evPct, bookImplied, reason, edgeFlags } = scoreLeg(prop, pick, games, sport);
+      const { confidence, evPct, bookImplied, reason, edgeFlags } = scoreLeg(prop, pick, games, sport, reversals);
       if (confidence >= 30) allLegs.push({ prop, pick, odds, confidence, evPct, bookImplied, reason, edgeFlags });
     });
   });
@@ -378,9 +403,19 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [filterSize, setFilterSize] = useState<number | 'all'>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
+  const [reversals, setReversals] = useState<Map<string, ReversalSignal>>(new Map());
+
+  // Background-load reversal signals so the confidence score reflects them
+  useEffect(() => {
+    let cancelled = false;
+    import('../services/lineMovement').then(m => m.getReversalsForSport(sport))
+      .then(map => { if (!cancelled) setReversals(map); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sport]);
 
   useEffect(() => {
-    const built = buildAllParlays(props as ParlayLeg['prop'][], games, sport);
+    const built = buildAllParlays(props as ParlayLeg['prop'][], games, sport, reversals);
     setParlays(built);
     setExpanded(built[0]?.id || null);
 
@@ -393,7 +428,7 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
         body: `${top.confidence}% confidence · ${fmt(top.combinedOdds)} payout · ${top.label}`,
       }, `parlay-${sport}-${top.id}`);
     }
-  }, [props, games, sport]);
+  }, [props, games, sport, reversals]);
 
   const filtered = parlays.filter(p => {
     const sizeMatch = filterSize === 'all' || p.legs.length === filterSize;

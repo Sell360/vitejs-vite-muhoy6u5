@@ -9,6 +9,7 @@ import { OddsBoard } from './components/OddsBoard';
 import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
 import { HousePicks } from './components/HousePicks';
+import { CascadeEdgeCard } from './components/CascadeEdgeCard';
 import { NotificationToaster } from './components/NotificationToaster';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useNotifications } from './services/notifications';
@@ -118,19 +119,19 @@ export default function Betz360() {
         }
         .b360-logo-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .b360-logo-icon {
-          width: 34px; height: 34px; border-radius: 7px; flex-shrink: 0;
-          background: linear-gradient(145deg, #0061ff, #00c6ff);
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 0 16px rgba(0,150,255,.45);
-          font-family: 'Barlow Condensed', sans-serif;
-          font-size: 18px; font-weight: 900; color: #fff; letter-spacing: -1px;
+          width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
+          background-image: url('/betz360-icon-small.webp');
+          background-size: cover; background-position: center;
+          box-shadow: 0 0 18px rgba(168,85,247,.35), 0 0 8px rgba(34,211,238,.25);
+          border: 1px solid rgba(168,85,247,.3);
         }
         .b360-wordmark {
-          font-family: 'Barlow Condensed', sans-serif;
+          font-family: 'Permanent Marker', 'Barlow Condensed', sans-serif;
           font-size: 26px; font-weight: 900; letter-spacing: 1px;
           line-height: 1;
-          background: linear-gradient(90deg, #fff 0%, #93c5fd 60%, #60a5fa 100%);
+          background: linear-gradient(90deg, #22d3ee 0%, #c084fc 50%, #f472b6 100%);
           -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+          text-shadow: 0 0 18px rgba(168,85,247,.3);
         }
         .b360-sub {
           font-family: 'Barlow Condensed', sans-serif;
@@ -390,7 +391,7 @@ export default function Betz360() {
         <div id="b360-topbar">
           {/* Logo */}
           <div className="b360-logo-wrap">
-            <div className="b360-logo-icon">B3</div>
+            <div className="b360-logo-icon" aria-label="Betz360"/>
             <div>
               <div className="b360-wordmark">BETZ360</div>
               <div className="b360-sub">Prop Intelligence</div>
@@ -552,7 +553,10 @@ export default function Betz360() {
               {dataLoading ? (
                 <div className="b360-empty"><div className="b360-empty-icon">⏳</div><div className="b360-empty-title">Loading games…</div></div>
               ) : (
-                <OddsBoard sport={sport} games={games} onNavigateParlays={() => setTab('parlays')} />
+                <>
+                  <OddsBoard sport={sport} games={games} onNavigateParlays={() => setTab('parlays')} />
+                  <CascadeEdgeCard />
+                </>
               )}
             </div>
 
