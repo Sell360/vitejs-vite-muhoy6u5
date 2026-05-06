@@ -97,6 +97,25 @@ export default function Betz360() {
           background: rgba(0,0,0,.18);
           flex-wrap: wrap; row-gap: 6px;
         }
+        /* Below 900px we explicitly stack the toolbar so stats and controls
+           live on their own rows instead of fighting for space */
+        @media (max-width: 900px) {
+          #b360-toolbar {
+            flex-direction: column;
+            align-items: stretch;
+            padding: 5px 14px 7px;
+            gap: 5px;
+          }
+          .b360-stats {
+            justify-content: space-between;
+            width: 100%;
+          }
+          .b360-controls {
+            justify-content: flex-end;
+            width: 100%;
+            flex-wrap: wrap;
+          }
+        }
         .b360-logo-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .b360-logo-icon {
           width: 34px; height: 34px; border-radius: 7px; flex-shrink: 0;
@@ -177,6 +196,27 @@ export default function Betz360() {
           background: linear-gradient(180deg, transparent, rgba(14,165,233,.06));
         }
         .b360-sep { width: 1px; background: rgba(255,255,255,.05); align-self: stretch; margin: 6px 8px; flex-shrink: 0; }
+
+        /* ── NAV RAIL (separate row beneath sports) ── */
+        #b360-navrail {
+          border-top: 1px solid rgba(255,255,255,.04);
+          background: rgba(0,0,0,.35);
+          overflow-x: auto; overflow-y: hidden;
+        }
+        #b360-navrail::-webkit-scrollbar { height: 0; }
+        .b360-nav-btn {
+          display: flex; align-items: center; gap: 7px;
+          padding: 9px 16px; background: transparent;
+          color: #4a6080; border: none; border-bottom: 2px solid transparent;
+          cursor: pointer; font-size: 13px; font-weight: 700;
+          font-family: 'Barlow Condensed', sans-serif; letter-spacing: .4px;
+          text-transform: uppercase; transition: all .15s; white-space: nowrap;
+        }
+        .b360-nav-btn:hover { color: #94a3b8; }
+        .b360-nav-btn.active {
+          color: #fff; border-bottom-color: #38bdf8;
+          background: linear-gradient(180deg, transparent, rgba(56,189,248,.08));
+        }
 
         /* ── NAV TABS ── */
         #b360-navtabs {
@@ -314,8 +354,12 @@ export default function Betz360() {
           main { padding: 14px 12px 100px !important; }
         }
         @media (max-width: 480px) {
-          .b360-stats { display: none; }
-          #b360-toolbar { justify-content: flex-end; }
+          /* On the smallest phones, shrink stat values further but keep them
+             visible since they now sit on their own dedicated toolbar row */
+          .b360-stat-val { font-size: 13px; }
+          .b360-stat { padding: 3px 6px; min-width: 38px; }
+          .b360-controls { gap: 4px; }
+          .b360-ctrl-btn { padding: 0 8px; font-size: 10px; }
         }
         @media (min-width: 801px) {
           .b360-games-col { display: block !important; }
@@ -424,15 +468,18 @@ export default function Betz360() {
                 onClick={() => changeSport(sp.key)}
               >{sp.emoji} {sp.label}</button>
             ))}
-            <div className="b360-sep"/>
-            {/* Nav tabs inline on desktop */}
+          </div>
+        </div>
+
+        {/* Nav rail */}
+        <div id="b360-navrail">
+          <div className="b360-sport-inner">
             {((isAdmin ? (['games','parlays','cross','picks','tracker','board','admin'] as const) : (['games','parlays','cross','picks','tracker','board'] as const)) as readonly typeof tab[]).map(t => {
               const labels:{[k:string]:string} = {games:'🏟 Games',parlays:'⚡ Parlays',cross:'🌐 Multi-Sport',picks:'📊 House Picks',tracker:'📊 Tracker',board:'🏆 Leaderboard',admin:'🛡 Admin'};
               return (
                 <button
                   key={t}
-                  className={`b360-sport-btn${tab===t?' active':''}`}
-                  style={{gap:7}}
+                  className={`b360-nav-btn${tab===t?' active':''}`}
                   onClick={() => setTab(t)}
                 >
                   {labels[t]}
