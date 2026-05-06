@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { getSimilarGames, type SimilarGame } from '../services/polymarket';
+import { useAuth } from '../contexts/AuthContext';
+import { UpgradeModal } from './ProGate';
 
 interface Props {
   sport: string;
@@ -8,9 +10,11 @@ interface Props {
 }
 
 export function SimilarGamesPanel({ sport, spread, total }: Props) {
+  const { isPro } = useAuth();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<SimilarGame[]>([]);
   const [loading, setLoading] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const load = async () => {
     if (data.length > 0 || loading) return;
@@ -22,14 +26,20 @@ export function SimilarGamesPanel({ sport, spread, total }: Props) {
 
   if (!spread && !total) return null;
 
+  const handleClick = () => {
+    if (!isPro) { setUpgradeOpen(true); return; }
+    setOpen(o => !o);
+    if (!open) load();
+  };
+
   return (
     <div style={{ marginTop: 4 }}>
       <button
-        onClick={() => { setOpen(o => !o); if (!open) load(); }}
+        onClick={handleClick}
         style={{
           width: '100%', padding: '6px 0',
           background: open ? 'rgba(168,85,247,.08)' : 'transparent',
-          color: '#94a3b8', border: 'none',
+          color: isPro ? '#94a3b8' : '#c084fc', border: 'none',
           borderTop: '1px dashed rgba(255,255,255,.06)',
           cursor: 'pointer', fontSize: 9, fontWeight: 700,
           fontFamily: "'Barlow Condensed', sans-serif",
@@ -37,8 +47,9 @@ export function SimilarGamesPanel({ sport, spread, total }: Props) {
           transition: 'all .15s',
         }}
       >
-        {open ? '▲ Hide similar games' : '🧭 Similar past games'}
+        {!isPro ? '🔒 Similar past games — Pro' : open ? '▲ Hide similar games' : '🧭 Similar past games'}
       </button>
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
       {open && (
         <div style={{

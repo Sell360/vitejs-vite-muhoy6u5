@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getSharpComparison, type SharpComparison } from '../services/polymarket';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   sport: string;
@@ -10,11 +11,12 @@ interface Props {
 }
 
 export function SharpLineBadge({ sport, homeTeam, awayTeam, homeML, awayML }: Props) {
+  const { isPro } = useAuth();
   const [data, setData] = useState<SharpComparison | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!homeML || !awayML) return;
+    if (!homeML || !awayML || !isPro) return;
     let cancelled = false;
     setLoading(true);
     getSharpComparison(sport, homeTeam, awayTeam, homeML, awayML)
@@ -22,8 +24,9 @@ export function SharpLineBadge({ sport, homeTeam, awayTeam, homeML, awayML }: Pr
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [sport, homeTeam, awayTeam, homeML, awayML]);
+  }, [sport, homeTeam, awayTeam, homeML, awayML, isPro]);
 
+  if (!isPro) return null;
   if (loading) return null;
   if (!data || !data.found || data.edgePct < 1.5) return null;
 

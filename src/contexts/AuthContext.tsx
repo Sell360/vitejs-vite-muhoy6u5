@@ -8,9 +8,13 @@ interface AuthContextValue {
   loading: boolean;
   username: string | null;
   isAdmin: boolean;
+  isPro: boolean;
+  proGrandfathered: boolean;
+  subscriptionStatus: string | null;
   signUp: (email: string, password: string, username: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
   isConfigured: boolean;
 }
 
@@ -22,6 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [proGrandfathered, setProGrandfathered] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
   const isConfigured = isSupabaseConfigured();
 
@@ -29,11 +36,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
-      .select('username, is_admin')
+      .select('username, is_admin, is_pro, pro_grandfathered, subscription_status')
       .eq('id', userId)
       .single();
     setUsername(data?.username ?? null);
     setIsAdmin(data?.is_admin ?? false);
+    setIsPro(data?.is_pro ?? false);
+    setProGrandfathered(data?.pro_grandfathered ?? false);
+    setSubscriptionStatus(data?.subscription_status ?? null);
+  };
+
+  const refreshProfile = async () => {
+    if (user) await fetchProfile(user.id);
   };
 
   useEffect(() => {
@@ -105,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, username, isAdmin, signUp, signIn, signOut, isConfigured }}>
+    <AuthContext.Provider value={{ user, session, loading, username, isAdmin, isPro, proGrandfathered, subscriptionStatus, signUp, signIn, signOut, refreshProfile, isConfigured }}>
       {children}
     </AuthContext.Provider>
   );

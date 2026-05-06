@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { GameData, WNBAGameData, GameLine, Sport } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { UpgradeModal } from './ProGate';
 
 interface GameProjectionProps {
   game: GameData | WNBAGameData;
@@ -40,11 +42,14 @@ const SPORT_CONTEXTS: Record<string, string> = {
 };
 
 export function GameProjection({ game, line, sport, onAddToBet }: GameProjectionProps) {
+  const { isPro } = useAuth();
   const [proj, setProj] = useState<Projection | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const generate = useCallback(async () => {
+    if (!isPro) { setUpgradeOpen(true); return; }
     if (loading) return;
     setLoading(true);
     setOpen(true);
@@ -105,7 +110,7 @@ ${contextLines}`
     } finally {
       setLoading(false);
     }
-  }, [game, line, sport, loading]);
+  }, [game, line, sport, loading, isPro]);
 
   const edgeColors = {
     SHARP: { bg: 'rgba(74,222,128,.12)', border: 'rgba(74,222,128,.3)', text: '#4ade80' },
@@ -140,9 +145,10 @@ ${contextLines}`
         ) : proj ? (
           '▼ Show Projection'
         ) : (
-          '🔮 AI Game Projection'
+          isPro ? '🔮 AI Game Projection' : '🔒 AI Game Projection — Pro'
         )}
       </button>
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 

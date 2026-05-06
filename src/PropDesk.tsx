@@ -10,6 +10,7 @@ import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
 import { HousePicks } from './components/HousePicks';
 import { CascadeEdgeCard } from './components/CascadeEdgeCard';
+import { ProGate, UpgradeModal } from './components/ProGate';
 import { NotificationToaster } from './components/NotificationToaster';
 import { InstallPrompt } from './components/InstallPrompt';
 import { useNotifications } from './services/notifications';
@@ -35,7 +36,26 @@ export default function Betz360() {
   const [propView, setPropView] = useState<'parlay'|'props'>('parlay');
   const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'|'picks'|'admin'>('parlays');
   const [authOpen, setAuthOpen] = useState(false);
-  const { user, username, isAdmin } = useAuth();
+  const { user, username, isAdmin, isPro, refreshProfile } = useAuth();
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  // Detect post-checkout redirect (?subscribed=1) and refresh profile so
+  // is_pro flips on instantly without waiting for next page load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('subscribed') === '1' && user) {
+      // Webhook may take 1-2 sec to fire — poll briefly
+      let tries = 0;
+      const poll = setInterval(async () => {
+        await refreshProfile();
+        tries++;
+        if (tries >= 5) clearInterval(poll);
+      }, 1500);
+      // Strip query param so refresh doesn't re-trigger
+      window.history.replaceState({}, '', window.location.pathname);
+      return () => clearInterval(poll);
+    }
+  }, [user, refreshProfile]);
   const { items: notifItems, requestPermission, permissionState } = useNotifications();
   const [aiOpen, setAiOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -400,6 +420,27 @@ export default function Betz360() {
 
           {/* Auth */}
           <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            {user && !isPro && (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setUpgradeOpen(true)}
+                title="Unlock Pro features"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(34,211,238,.18), rgba(168,85,247,.18))',
+                  color: '#c084fc', borderColor: 'rgba(168,85,247,.4)',
+                  fontWeight: 800,
+                }}
+              >⭐ Go Pro</button>
+            )}
+            {user && isPro && (
+              <span title="Pro member" style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: .8,
+                color: '#c084fc', background: 'rgba(168,85,247,.1)',
+                border: '1px solid rgba(168,85,247,.3)',
+                borderRadius: 5, padding: '4px 8px',
+                fontFamily: "'Barlow Condensed', sans-serif",
+              }}>★ PRO</span>
+            )}
             {user ? (
               <button
                 className="b360-ctrl-btn"
@@ -575,7 +616,11 @@ export default function Betz360() {
                   <button className="b360-ghost" onClick={() => { setSelectedGameId(null); setPropView('parlay'); }}>✕ Clear game</button>
                 )}
               </div>
-              {propView==='parlay' && <ParlayBuilder props={allProps} games={games} sport={sport}/>}
+              {propView==='parlay' && (isPro ? <ParlayBuilder props={allProps} games={games} sport={sport}/> : (
+                <ProGate label="Parlay Builder is a Pro feature">
+                  <ParlayBuilder props={allProps} games={games} sport={sport}/>
+                </ProGate>
+              ))}
               {propView==='props' && (
                 selectedGameId
                   ? <PropsList props={props} onAnalyzeProp={analyzeProp}/>
@@ -595,7 +640,11 @@ export default function Betz360() {
         {tab==='cross' && (
           <div>
             <div className="b360-slabel" style={{marginBottom:14}}>Multi-Sport Parlay & Pick 6</div>
-            <CrossSportParlay/>
+            {isPro ? <CrossSportParlay/> : (
+              <ProGate label="Multi-Sport Parlay is a Pro feature">
+                <CrossSportParlay/>
+              </ProGate>
+            )}
           </div>
         )}
 
@@ -644,6 +693,7 @@ export default function Betz360() {
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <NotificationToaster />
       <InstallPrompt />
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
     </div>
   );
 }

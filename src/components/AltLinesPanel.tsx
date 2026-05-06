@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, AltLines } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import { UpgradeModal } from './ProGate';
 
 interface Props {
   sport: Sport;
@@ -16,10 +18,12 @@ function fmt(odds: number) {
 }
 
 export function AltLinesPanel({ sport, eventId, homeTeam, awayTeam, onAddLeg }: Props) {
+  const { isPro } = useAuth();
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<AltLines | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (data || loading) return;
@@ -31,6 +35,7 @@ export function AltLinesPanel({ sport, eventId, homeTeam, awayTeam, onAddLeg }: 
   }, [sport, eventId, data, loading]);
 
   const toggle = () => {
+    if (!isPro) { setUpgradeOpen(true); return; }
     setOpen(o => !o);
     if (!open) load();
   };
@@ -42,7 +47,7 @@ export function AltLinesPanel({ sport, eventId, homeTeam, awayTeam, onAddLeg }: 
         style={{
           width: '100%', padding: '6px 0',
           background: open ? 'rgba(99,102,241,.1)' : 'transparent',
-          color: '#4a6080', border: 'none',
+          color: isPro ? '#4a6080' : '#c084fc', border: 'none',
           borderTop: '1px dashed rgba(255,255,255,.06)',
           cursor: 'pointer', fontSize: 9, fontWeight: 700,
           fontFamily: "'Barlow Condensed', sans-serif",
@@ -50,8 +55,9 @@ export function AltLinesPanel({ sport, eventId, homeTeam, awayTeam, onAddLeg }: 
           transition: 'all .15s',
         }}
       >
-        {open ? '▲ Hide alt lines' : '▼ Alt spreads & totals'}
+        {!isPro ? '🔒 Alt spreads & totals — Pro' : open ? '▲ Hide alt lines' : '▼ Alt spreads & totals'}
       </button>
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
 
       {open && (
         <div style={{ background: 'rgba(99,102,241,.04)', border: '1px solid rgba(99,102,241,.15)', borderRadius: 7, padding: '8px 10px', marginTop: 4 }}>
