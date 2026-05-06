@@ -3,6 +3,8 @@ import { apiService } from '../services/api';
 import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
 import { GameProjection } from './GameProjection';
 import { AltLinesPanel } from './AltLinesPanel';
+import { SharpLineBadge } from './SharpLineBadge';
+import { SimilarGamesPanel } from './SimilarGamesPanel';
 import { getTimezoneEdge } from '../services/edgeSignals';
 import { getReversalsForSport, type ReversalSignal } from '../services/lineMovement';
 import { ParlayShareCard } from './ParlayShareCard';
@@ -261,6 +263,13 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                   }}>{label} {rev.strength}/10</div>
                 );
               })()}
+              <SharpLineBadge
+                sport={sport}
+                homeTeam={game.homeTeam}
+                awayTeam={game.awayTeam}
+                homeML={line?.homeML ?? null}
+                awayML={line?.awayML ?? null}
+              />
               <div style={{ marginTop: 5 }}>
                 <GameProjection
                   game={game}
@@ -282,6 +291,11 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                     odds,
                     sport,
                   })}
+                />
+                <SimilarGamesPanel
+                  sport={sport}
+                  spread={line?.homeSpread ?? null}
+                  total={line?.total ?? null}
                 />
               </div>
             </div>
