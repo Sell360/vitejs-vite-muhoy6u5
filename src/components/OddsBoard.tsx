@@ -182,12 +182,20 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 0 }}>
+      <style>{`
+        .b360-odds-row { display: grid; grid-template-columns: 200px 1fr 1fr 1fr; gap: 6px; }
+        @media (max-width: 700px) {
+          .b360-odds-row { grid-template-columns: 130px 1fr 1fr 1fr; gap: 3px; font-size: 11px; }
+          .b360-odds-row .b360-stack { gap: 2px !important; }
+        }
+        @media (max-width: 420px) {
+          .b360-odds-row { grid-template-columns: 110px 1fr 1fr 1fr; }
+        }
+      `}</style>
 
       {/* ── COLUMN HEADERS ── */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '200px 1fr 1fr 1fr',
-        gap: 6, padding: '6px 0 8px',
+      <div className="b360-odds-row" style={{
+        padding: '6px 0 8px',
         borderBottom: '1px solid rgba(255,255,255,.06)',
         marginBottom: 4,
       }}>
@@ -207,10 +215,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
         const isFinal = game.status === 'final';
 
         return (
-          <div key={game.id} style={{
-            display: 'grid',
-            gridTemplateColumns: '200px 1fr 1fr 1fr',
-            gap: 6,
+          <div key={game.id} className="b360-odds-row" style={{
             padding: '6px 0',
             borderBottom: '1px solid rgba(255,255,255,.04)',
             alignItems: 'center',

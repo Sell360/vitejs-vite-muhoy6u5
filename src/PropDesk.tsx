@@ -9,6 +9,7 @@ import { OddsBoard } from './components/OddsBoard';
 import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
 import { NotificationToaster } from './components/NotificationToaster';
+import { InstallPrompt } from './components/InstallPrompt';
 import { useNotifications } from './services/notifications';
 import { AuthModal } from './components/AuthModal';
 import { useAuth } from './contexts/AuthContext';
@@ -305,8 +306,11 @@ export default function Betz360() {
           .b360-sub { font-size: 8px; letter-spacing: 2px; }
           #b360-topbar { padding: 0 14px; height: 44px; }
           #b360-toolbar { padding: 5px 14px; }
-          .b360-ctrl-btn { padding: 0 10px; font-size: 11px; height: 30px; }
+          .b360-ctrl-btn { padding: 0 10px; font-size: 11px; height: 32px; min-width: 44px; }
           .b360-controls { gap: 5px; }
+          .b360-sport-btn { min-height: 36px; }
+          /* Bigger tap targets in odds cells on mobile */
+          main { padding: 14px 12px 100px !important; }
         }
         @media (max-width: 480px) {
           .b360-stats { display: none; }
@@ -316,6 +320,23 @@ export default function Betz360() {
           .b360-games-col { display: block !important; }
           .b360-parlays-col { display: block !important; }
         }
+
+        /* ── PWA STANDALONE MODE ── */
+        /* When installed as a PWA, respect the device safe area (iOS notch / Android nav bar) */
+        @supports (padding: max(0px)) {
+          #b360-header { padding-top: env(safe-area-inset-top); }
+          main { padding-bottom: max(70px, env(safe-area-inset-bottom)) !important; }
+        }
+        @media (display-mode: standalone) {
+          /* Hide install prompt when already installed */
+          #betz360-install { display: none !important; }
+          /* Tighter top padding when running standalone */
+          body { -webkit-tap-highlight-color: transparent; }
+        }
+        /* Better mobile touch behavior across the app */
+        button, a { -webkit-tap-highlight-color: rgba(0,128,255,.15); touch-action: manipulation; }
+        /* Disable pull-to-refresh on mobile (we have our own refresh button) */
+        body { overscroll-behavior-y: contain; }
       `}</style>
 
       {/* ── HEADER ── */}
@@ -562,6 +583,7 @@ export default function Betz360() {
       </footer>
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <NotificationToaster />
+      <InstallPrompt />
     </div>
   );
 }
