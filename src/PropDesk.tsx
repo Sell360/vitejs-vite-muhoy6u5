@@ -93,7 +93,7 @@ export default function Betz360() {
           max-width: 1500px; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
           padding: 6px 20px; gap: 10px;
-          border-bottom: 1px solid rgba(255,255,255,.04);
+          border-top: 1px solid rgba(255,255,255,.04);
           background: rgba(0,0,0,.18);
           flex-wrap: wrap; row-gap: 6px;
         }
@@ -386,7 +386,50 @@ export default function Betz360() {
 
       {/* ── HEADER ── */}
       <header id="b360-header">
-        {/* First row: stats + controls */}
+        {/* First row: logo + sign in */}
+        <div id="b360-topbar">
+          {/* Logo */}
+          <div className="b360-logo-wrap">
+            <div className="b360-logo-icon">B3</div>
+            <div>
+              <div className="b360-wordmark">BETZ360</div>
+              <div className="b360-sub">Prop Intelligence</div>
+            </div>
+          </div>
+
+          {/* Auth */}
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            {user ? (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setTab('tracker')}
+                title={`Logged in as @${username || 'user'}`}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >👤 @{username || 'me'}</button>
+            ) : (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setAuthOpen(true)}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >Sign in</button>
+            )}
+          </div>
+        </div>
+
+        {/* Second row: sport rail */}
+        <div id="b360-sportrail">
+          <div className="b360-sport-inner">
+            {SPORTS.map(sp => (
+              <button
+                key={sp.key}
+                className={`b360-sport-btn${sport===sp.key?' active':''}`}
+                onClick={() => changeSport(sp.key)}
+              >{sp.emoji} {sp.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Third row: stats + controls */}
         <div id="b360-toolbar">
           {/* Live stats */}
           <div className="b360-stats">
@@ -425,49 +468,6 @@ export default function Betz360() {
             >
               🔔 {notifItems.length > 0 && <span style={{ marginLeft: 4, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900 }}>{notifItems.length}</span>}
             </button>
-          </div>
-        </div>
-
-        {/* Second row: logo + sign in */}
-        <div id="b360-topbar">
-          {/* Logo */}
-          <div className="b360-logo-wrap">
-            <div className="b360-logo-icon">B3</div>
-            <div>
-              <div className="b360-wordmark">BETZ360</div>
-              <div className="b360-sub">Prop Intelligence</div>
-            </div>
-          </div>
-
-          {/* Auth */}
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
-            {user ? (
-              <button
-                className="b360-ctrl-btn"
-                onClick={() => setTab('tracker')}
-                title={`Logged in as @${username || 'user'}`}
-                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
-              >👤 @{username || 'me'}</button>
-            ) : (
-              <button
-                className="b360-ctrl-btn"
-                onClick={() => setAuthOpen(true)}
-                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
-              >Sign in</button>
-            )}
-          </div>
-        </div>
-
-        {/* Sport rail */}
-        <div id="b360-sportrail">
-          <div className="b360-sport-inner">
-            {SPORTS.map(sp => (
-              <button
-                key={sp.key}
-                className={`b360-sport-btn${sport===sp.key?' active':''}`}
-                onClick={() => changeSport(sp.key)}
-              >{sp.emoji} {sp.label}</button>
-            ))}
           </div>
         </div>
 
