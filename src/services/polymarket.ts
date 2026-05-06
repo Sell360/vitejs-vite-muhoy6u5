@@ -148,6 +148,8 @@ function matchGame(
 }
 
 // ─── PUBLIC API ───────────────────────────────────────────────────────────
+const DEBUG = typeof window !== 'undefined' && window.location.search.includes('debug=poly');
+
 export async function getSharpComparison(
   sport: string,
   homeTeam: string,
@@ -166,9 +168,15 @@ export async function getSharpComparison(
   if (!homeML || !awayML) return empty;
 
   const markets = await getActiveMarkets(sport);
+  if (DEBUG) console.log(`[poly] ${awayTeam} @ ${homeTeam} — ${markets.length} markets to scan`);
   if (markets.length === 0) return empty;
 
   const match = matchGame(markets, homeTeam, awayTeam);
+  if (DEBUG && !match) {
+    const homeKey = (homeTeam.split(' ').pop() || '').toLowerCase();
+    const awayKey = (awayTeam.split(' ').pop() || '').toLowerCase();
+    console.log(`[poly] no match for ${awayTeam} @ ${homeTeam}. Searched for "${awayKey}" + "${homeKey}". Sample questions:`, markets.slice(0, 3).map(m => m.question));
+  }
   if (!match) return empty;
 
   const bookHome = americanToImplied(homeML) * 100;
@@ -182,7 +190,7 @@ export async function getSharpComparison(
 
   const divergence = polyHome - bookHomeNoVig;
   const edgePct = Math.abs(divergence);
-  const sharpSide: 'home' | 'away' | null = edgePct < 2 ? null : (divergence > 0 ? 'home' : 'away');
+  const sharpSide: 'home' | 'away' | null = edgePct < 1.5 ? null : (divergence > 0 ? 'home' : 'away');
 
   return {
     found: true,

@@ -25,7 +25,7 @@ export function SharpLineBadge({ sport, homeTeam, awayTeam, homeML, awayML }: Pr
   }, [sport, homeTeam, awayTeam, homeML, awayML]);
 
   if (loading) return null;
-  if (!data || !data.found || data.edgePct < 2) return null;
+  if (!data || !data.found || data.edgePct < 1.5) return null;
 
   const sharpTeam = data.sharpSide === 'home' ? homeTeam : awayTeam;
   const accentColor = data.edgePct >= 5 ? '#22d3ee' : '#818cf8';
