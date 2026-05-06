@@ -2,9 +2,19 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllUsers, adminSetUserLimit, adminAdjustBankroll, type AdminUser } from '../services/mockBets';
 
+interface CreditUsage {
+  used: number;
+  remaining: number;
+  total: number;
+  percentUsed: number;
+  lastCallCost: number;
+  timestamp: string;
+}
+
 export function AdminPanel() {
   const { isAdmin, user } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [credits, setCredits] = useState<CreditUsage | null>(null);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ bankroll: '', maxBankroll: '' });
@@ -12,8 +22,12 @@ export function AdminPanel() {
   const refresh = useCallback(async () => {
     if (!isAdmin) return;
     setLoading(true);
-    const data = await getAllUsers();
+    const [data, creditRes] = await Promise.all([
+      getAllUsers(),
+      fetch('/api/credit-usage').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
     setUsers(data);
+    setCredits(creditRes && !creditRes.error ? creditRes : null);
     setLoading(false);
   }, [isAdmin]);
 
@@ -64,6 +78,39 @@ export function AdminPanel() {
 
   return (
     <div style={{ fontFamily: "'Barlow', sans-serif" }}>
+      {/* Credit usage banner */}
+      {credits && (() => {
+        const color = credits.percentUsed >= 90 ? '#f87171' : credits.percentUsed >= 70 ? '#fbbf24' : '#4ade80';
+        return (
+          <div style={{
+            background: `${color}10`, border: `1px solid ${color}40`,
+            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>Odds API Monthly</div>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>
+                  {credits.used.toLocaleString()} <span style={{ color: '#1a3060', fontSize: 14 }}>/ {credits.total.toLocaleString()}</span>
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 140 }}>
+                <div style={{ background: 'rgba(255,255,255,.05)', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, credits.percentUsed)}%`, background: color, height: 8, transition: 'width .3s' }} />
+                </div>
+                <div style={{ fontSize: 10, color: '#1a3060', marginTop: 3, fontWeight: 600 }}>
+                  {credits.percentUsed}% used · {credits.remaining.toLocaleString()} credits remaining
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>Last Call</div>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: '#8ab0cc' }}>{credits.lastCallCost} credits</div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 800, color: '#fbbf24', letterSpacing: .3 }}>

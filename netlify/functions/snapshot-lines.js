@@ -60,6 +60,16 @@ exports.handler = async () => {
 
   for (const [sport, oddsSport] of Object.entries(SPORT_MAP)) {
     try {
+      // First — free events check. If no games in next 6 hrs, skip this sport entirely.
+      const evCheck = await fetchJSON(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`);
+      if (evCheck.status !== 200 || !Array.isArray(evCheck.data)) continue;
+      const upcomingGames = evCheck.data.filter(e => {
+        const t = new Date(e.commence_time).getTime();
+        return t > Date.now() - 30 * 60 * 1000 && t < Date.now() + 6 * 60 * 60 * 1000;
+      });
+      if (upcomingGames.length === 0) continue;
+
+      // Now spend 3 credits on the full odds call
       const r = await fetchJSON(`https://api.the-odds-api.com/v4/sports/${oddsSport}/odds?apiKey=${ODDS_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`);
       if (r.status !== 200 || !Array.isArray(r.data)) {
         errors.push({ sport, status: r.status });

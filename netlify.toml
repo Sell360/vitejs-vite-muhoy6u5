@@ -9,7 +9,7 @@
   status = 200
 
 [functions."snapshot-lines"]
-  schedule = "*/30 * * * *"
+  schedule = "0 */2 * * *"
 
 [dev]
   command = "npm run dev"

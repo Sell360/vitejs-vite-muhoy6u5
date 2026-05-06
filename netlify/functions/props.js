@@ -80,7 +80,11 @@ exports.handler = async (event) => {
   // Cache key includes date — auto-expires daily
   const today = new Date().toISOString().split('T')[0];
   const cacheKey = `${sport}-${type || 'props'}-${today}`;
-  const ttlMinutes = type === 'games' ? 30 : 240; // games: 30min, props: 4hrs
+  // Aggressive TTLs to stay under 20k credits/month:
+  //   games: 60min (was 30) — saves 50% of game line credits
+  //   props: 6hrs (was 4hrs) — saves 33% of prop credits
+  //   alts: 12hrs — alts move slowly so this is safe
+  const ttlMinutes = type === 'games' ? 60 : type === 'alts' ? 720 : 360;
 
   const cache = loadCache();
   if (isCacheValid(cache[cacheKey], ttlMinutes)) {
@@ -182,7 +186,7 @@ exports.handler = async (event) => {
 
     const events = (Array.isArray(evR.data) ? evR.data : []).filter(e =>
       new Date(e.commence_time).getTime() > Date.now() - 3 * 60 * 60 * 1000
-    ).slice(0, 6); // Max 6 games = max 6 credits
+    ).slice(0, 4); // Max 4 games to limit credits — was 6, saves ~33%
 
     if (events.length === 0) {
       cache[cacheKey] = { data: [], ts: Date.now() }; saveCache(cache);
