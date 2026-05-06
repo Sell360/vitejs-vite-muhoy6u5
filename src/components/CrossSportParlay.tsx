@@ -171,7 +171,19 @@ export function CrossSportParlay() {
   const tc = tierColors[tier] || tierColors.C;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, fontFamily: "'Barlow', system-ui, sans-serif" }}>
+    <div className="b360-cross-grid" style={{ fontFamily: "'Barlow', system-ui, sans-serif" }}>
+      <style>{`
+        .b360-cross-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) 320px;
+          gap: 16px;
+          align-items: start;
+        }
+        @media (max-width: 900px) {
+          .b360-cross-grid { grid-template-columns: minmax(0, 1fr); }
+          .b360-cross-slip { position: static !important; max-height: none !important; }
+        }
+      `}</style>
 
       {/* ── LEFT ── */}
       <div>
@@ -371,7 +383,7 @@ export function CrossSportParlay() {
       </div>
 
       {/* ── RIGHT: Slip ── */}
-      <div style={{ position: 'sticky', top: 70 }}>
+      <div className="b360-cross-slip" style={{ position: 'sticky', top: 70 }}>
         <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
