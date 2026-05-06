@@ -14,8 +14,8 @@
 [functions."lock-house-picks"]
   schedule = "0 13 * * *"
 
-[functions."settle-house-picks"]
-  schedule = "0 9 * * *"
+[functions."auto-settle-picks"]
+  schedule = "30 */2 * * *"
 
 [dev]
   command = "npm run dev"
