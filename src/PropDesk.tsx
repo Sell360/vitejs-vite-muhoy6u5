@@ -417,19 +417,7 @@ export default function Betz360() {
         </div>
 
         {/* Second row: sport rail */}
-        <div id="b360-sportrail">
-          <div className="b360-sport-inner">
-            {SPORTS.map(sp => (
-              <button
-                key={sp.key}
-                className={`b360-sport-btn${sport===sp.key?' active':''}`}
-                onClick={() => changeSport(sp.key)}
-              >{sp.emoji} {sp.label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Third row: stats + controls */}
+        {/* Second row: stats + controls */}
         <div id="b360-toolbar">
           {/* Live stats */}
           <div className="b360-stats">
@@ -471,7 +459,7 @@ export default function Betz360() {
           </div>
         </div>
 
-        {/* Nav rail */}
+        {/* Third row: nav tabs */}
         <div id="b360-navrail">
           <div className="b360-sport-inner">
             {((isAdmin ? (['games','parlays','cross','picks','tracker','board','admin'] as const) : (['games','parlays','cross','picks','tracker','board'] as const)) as readonly typeof tab[]).map(t => {
@@ -488,6 +476,19 @@ export default function Betz360() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Fourth row: sport pills */}
+        <div id="b360-sportrail">
+          <div className="b360-sport-inner">
+            {SPORTS.map(sp => (
+              <button
+                key={sp.key}
+                className={`b360-sport-btn${sport===sp.key?' active':''}`}
+                onClick={() => changeSport(sp.key)}
+              >{sp.emoji} {sp.label}</button>
+            ))}
           </div>
         </div>
 
