@@ -85,7 +85,15 @@ export default function Betz360() {
         #b360-topbar {
           max-width: 1500px; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 0 20px; height: 52px; gap: 16px;
+          padding: 0 20px; height: 48px; gap: 16px;
+        }
+        #b360-toolbar {
+          max-width: 1500px; margin: 0 auto;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 6px 20px; gap: 10px;
+          border-top: 1px solid rgba(255,255,255,.04);
+          background: rgba(0,0,0,.18);
+          flex-wrap: wrap; row-gap: 6px;
         }
         .b360-logo-wrap { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .b360-logo-icon {
@@ -287,11 +295,22 @@ export default function Betz360() {
         /* ── RESPONSIVE ── */
         @media (max-width: 800px) {
           .b360-two-col { grid-template-columns: 1fr; }
-          .b360-stats { display: none; }
-          .b360-stat-lbl { font-size: 7px; }
+          .b360-stats { gap: 4px; }
+          .b360-stat { padding: 4px 8px; min-width: 44px; }
+          .b360-stat-val { font-size: 15px; }
+          .b360-stat-lbl { font-size: 7px; letter-spacing: .5px; }
           .b360-games-col { display: none; }
           .b360-parlays-col { display: none; }
           .b360-wordmark { font-size: 22px; }
+          .b360-sub { font-size: 8px; letter-spacing: 2px; }
+          #b360-topbar { padding: 0 14px; height: 44px; }
+          #b360-toolbar { padding: 5px 14px; }
+          .b360-ctrl-btn { padding: 0 10px; font-size: 11px; height: 30px; }
+          .b360-controls { gap: 5px; }
+        }
+        @media (max-width: 480px) {
+          .b360-stats { display: none; }
+          #b360-toolbar { justify-content: flex-end; }
         }
         @media (min-width: 801px) {
           .b360-games-col { display: block !important; }
@@ -301,8 +320,8 @@ export default function Betz360() {
 
       {/* ── HEADER ── */}
       <header id="b360-header">
+        {/* Top row: logo + sign in */}
         <div id="b360-topbar">
-
           {/* Logo */}
           <div className="b360-logo-wrap">
             <div className="b360-logo-icon">B3</div>
@@ -312,6 +331,27 @@ export default function Betz360() {
             </div>
           </div>
 
+          {/* Auth — always visible on top row */}
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            {user ? (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setTab('tracker')}
+                title={`Logged in as @${username || 'user'}`}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >👤 @{username || 'me'}</button>
+            ) : (
+              <button
+                className="b360-ctrl-btn"
+                onClick={() => setAuthOpen(true)}
+                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
+              >Sign in</button>
+            )}
+          </div>
+        </div>
+
+        {/* Second row: stats + controls */}
+        <div id="b360-toolbar">
           {/* Live stats */}
           <div className="b360-stats">
             <div className="b360-stat">
@@ -349,20 +389,6 @@ export default function Betz360() {
             >
               🔔 {notifItems.length > 0 && <span style={{ marginLeft: 4, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900 }}>{notifItems.length}</span>}
             </button>
-            {user ? (
-              <button
-                className="b360-ctrl-btn"
-                onClick={() => setTab('tracker')}
-                title={`Logged in as @${username || 'user'}`}
-                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
-              >👤 @{username || 'me'}</button>
-            ) : (
-              <button
-                className="b360-ctrl-btn"
-                onClick={() => setAuthOpen(true)}
-                style={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,.3)' }}
-              >Sign in</button>
-            )}
           </div>
         </div>
 
