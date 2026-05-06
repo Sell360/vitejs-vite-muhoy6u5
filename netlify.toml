@@ -8,6 +8,9 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+[functions."snapshot-lines"]
+  schedule = "*/30 * * * *"
+
 [dev]
   command = "npm run dev"
   port = 5173

@@ -128,6 +128,54 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify(games) };
     }
 
+    // ── Alternate lines — 1 credit per game (alts only) ─────────────────
+    if (type === 'alts') {
+      const eventId = event.queryStringParameters?.eventId;
+      if (!eventId) return { statusCode: 400, headers, body: JSON.stringify({ error: 'eventId required for alts' }) };
+
+      const r = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events/${eventId}/odds?apiKey=${ODDS_KEY}&regions=us&markets=alternate_spreads,alternate_totals&oddsFormat=american`);
+      if (r.status !== 200) {
+        return { statusCode: 200, headers, body: JSON.stringify({ available: false, error: r.data?.message || `HTTP ${r.status}` }) };
+      }
+
+      const book = r.data.bookmakers?.find(b => b.key === 'draftkings') || r.data.bookmakers?.find(b => b.key === 'fanduel') || r.data.bookmakers?.[0];
+      if (!book) {
+        return { statusCode: 200, headers, body: JSON.stringify({ available: false }) };
+      }
+
+      const altSpreadsM = book.markets?.find(m => m.key === 'alternate_spreads');
+      const altTotalsM  = book.markets?.find(m => m.key === 'alternate_totals');
+
+      const result = {
+        available: true,
+        eventId,
+        homeTeam: r.data.home_team,
+        awayTeam: r.data.away_team,
+        spreads: { home: [], away: [] },
+        totals:  { over: [], under: [] },
+      };
+
+      if (altSpreadsM) {
+        altSpreadsM.outcomes?.forEach(o => {
+          if (o.name === r.data.home_team) result.spreads.home.push({ point: o.point, price: o.price });
+          else if (o.name === r.data.away_team) result.spreads.away.push({ point: o.point, price: o.price });
+        });
+        result.spreads.home.sort((a, b) => a.point - b.point);
+        result.spreads.away.sort((a, b) => a.point - b.point);
+      }
+      if (altTotalsM) {
+        altTotalsM.outcomes?.forEach(o => {
+          if (o.name === 'Over') result.totals.over.push({ point: o.point, price: o.price });
+          else if (o.name === 'Under') result.totals.under.push({ point: o.point, price: o.price });
+        });
+        result.totals.over.sort((a, b) => a.point - b.point);
+        result.totals.under.sort((a, b) => a.point - b.point);
+      }
+
+      cache[cacheKey + '-' + eventId] = { data: result, ts: Date.now() }; saveCache(cache);
+      return { statusCode: 200, headers, body: JSON.stringify(result) };
+    }
+
     // Player props — 1 credit for events + 1 per game (max 6 games)
     const evR = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/events?apiKey=${ODDS_KEY}`);
     if (evR.status !== 200) throw new Error(`Events ${evR.status}: ${JSON.stringify(evR.data)}`);

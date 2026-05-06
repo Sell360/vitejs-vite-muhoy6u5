@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ParlayShareCard } from './ParlayShareCard';
+import { notifications } from '../services/notifications';
 import { CorrelationStacker } from './CorrelationStacker';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 import { getEdgeContext, applyEdgeContext } from '../services/edgeSignals';
@@ -382,6 +383,16 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
     const built = buildAllParlays(props as ParlayLeg['prop'][], games, sport);
     setParlays(built);
     setExpanded(built[0]?.id || null);
+
+    // Notify on top S-tier parlay (only the highest one to avoid spam)
+    const top = built.find(p => p.tier === 'S' && p.confidence >= 75);
+    if (top) {
+      notifications.push({
+        type: 'parlay',
+        title: `S-TIER ${sport.toUpperCase()} ${top.legs.length}-Leg Parlay`,
+        body: `${top.confidence}% confidence · ${fmt(top.combinedOdds)} payout · ${top.label}`,
+      }, `parlay-${sport}-${top.id}`);
+    }
   }, [props, games, sport]);
 
   const filtered = parlays.filter(p => {

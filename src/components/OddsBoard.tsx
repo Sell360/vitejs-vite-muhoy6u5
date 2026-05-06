@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
 import { GameProjection } from './GameProjection';
+import { AltLinesPanel } from './AltLinesPanel';
 import { getTimezoneEdge } from '../services/edgeSignals';
+import { getReversalsForSport, type ReversalSignal } from '../services/lineMovement';
 import { ParlayShareCard } from './ParlayShareCard';
 import { useAuth } from '../contexts/AuthContext';
 import { logBet, wouldExceedUnderdogCap, MAX_UNDERDOGS_PER_PARLAY } from '../services/mockBets';
+import { notifications } from '../services/notifications';
 
 interface OddsBoardProps {
   sport: Sport;
@@ -110,6 +113,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
   const [logged, setLogged] = useState(false);
   const [lines, setLines] = useState<GameLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
+  const [reversals, setReversals] = useState<Map<string, ReversalSignal>>(new Map());
   const [slip, setSlip] = useState<BetSlipLeg[]>([]);
   const [stake, setStake] = useState('25');
   const [slipOpen, setSlipOpen] = useState(false);
@@ -121,6 +125,20 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
       .then(setLines)
       .catch(() => setLines([]))
       .finally(() => setLinesLoading(false));
+    // Background load reversal signals
+    getReversalsForSport(sport).then(map => {
+      setReversals(map);
+      // Notify on each reversal/steam signal (deduped per event)
+      map.forEach((sig, eventId) => {
+        const game = games.find(g => g.id === eventId);
+        if (!game) return;
+        notifications.push({
+          type: sig.direction === 'reversal' ? 'reversal' : 'line_move',
+          title: `${sig.direction === 'reversal' ? 'SHARP REVERSE' : 'STEAM MOVE'} · ${sig.market.toUpperCase()}`,
+          body: `${game.awayTeam} @ ${game.homeTeam} — ${sig.description}`,
+        }, `${sig.direction}-${eventId}-${sig.market}`);
+      });
+    }).catch(() => setReversals(new Map()));
   }, [sport]);
 
   const [underdogWarning, setUnderdogWarning] = useState('');
@@ -229,12 +247,41 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                   }}>{tz.flag}</div>
                 );
               })()}
+              {(() => {
+                const rev = reversals.get(game.id);
+                if (!rev) return null;
+                const c = rev.direction === 'reversal' ? '#a855f7' : '#fb923c';
+                const label = rev.direction === 'reversal' ? `🔄 SHARP REVERSE` : `🔥 STEAM`;
+                return (
+                  <div title={rev.description} style={{
+                    fontSize: 9, color: c, marginTop: 2, marginLeft: 4, fontWeight: 700,
+                    fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: .3,
+                    background: `${c}15`, border: `1px solid ${c}40`,
+                    padding: '1px 5px', borderRadius: 3, display: 'inline-block',
+                  }}>{label} {rev.strength}/10</div>
+                );
+              })()}
               <div style={{ marginTop: 5 }}>
                 <GameProjection
                   game={game}
                   line={line}
                   sport={sport}
                   onAddToBet={(label, odds) => toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'TOTAL', side: odds > 0 ? 'over' : 'under', label, odds, sport })}
+                />
+                <AltLinesPanel
+                  sport={sport}
+                  eventId={game.id}
+                  homeTeam={game.homeTeam}
+                  awayTeam={game.awayTeam}
+                  onAddLeg={(label, odds, betType, side) => toggleLeg({
+                    gameId: game.id,
+                    matchup: `${game.awayTeam} @ ${game.homeTeam}`,
+                    betType,
+                    side: side as 'home' | 'away' | 'over' | 'under',
+                    label,
+                    odds,
+                    sport,
+                  })}
                 />
               </div>
             </div>

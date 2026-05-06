@@ -8,6 +8,8 @@ import { BetTracker } from './components/BetTracker';
 import { OddsBoard } from './components/OddsBoard';
 import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
+import { NotificationToaster } from './components/NotificationToaster';
+import { useNotifications } from './services/notifications';
 import { AuthModal } from './components/AuthModal';
 import { useAuth } from './contexts/AuthContext';
 
@@ -31,6 +33,7 @@ export default function Betz360() {
   const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'|'admin'>('parlays');
   const [authOpen, setAuthOpen] = useState(false);
   const { user, username, isAdmin } = useAuth();
+  const { items: notifItems, requestPermission, permissionState } = useNotifications();
   const [aiOpen, setAiOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { games, props, allProps, loading: dataLoading, propsLoading, error: dataError, propsError, refreshData, lastUpdated } = useRealTimeData(sport);
@@ -338,6 +341,14 @@ export default function Betz360() {
               className={`b360-ctrl-btn${aiOpen?' active':''}`}
               onClick={() => setAiOpen(v => !v)}
             >⚡ AI Analyze</button>
+            <button
+              className="b360-ctrl-btn"
+              onClick={() => { if (permissionState !== 'granted') requestPermission(); }}
+              title={permissionState === 'granted' ? `${notifItems.length} recent` : 'Click to enable notifications'}
+              style={notifItems.length > 0 ? { color: '#fbbf24', borderColor: 'rgba(251,191,36,.3)' } : {}}
+            >
+              🔔 {notifItems.length > 0 && <span style={{ marginLeft: 4, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900 }}>{notifItems.length}</span>}
+            </button>
             {user ? (
               <button
                 className="b360-ctrl-btn"
@@ -524,6 +535,7 @@ export default function Betz360() {
         </div>
       </footer>
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
+      <NotificationToaster />
     </div>
   );
 }

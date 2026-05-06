@@ -26,6 +26,16 @@ export interface GameLine {
   vendor: string;
 }
 
+export interface AltLinePoint { point: number; price: number; }
+export interface AltLines {
+  available: boolean;
+  eventId: string;
+  homeTeam: string;
+  awayTeam: string;
+  spreads: { home: AltLinePoint[]; away: AltLinePoint[]; };
+  totals:  { over: AltLinePoint[]; under: AltLinePoint[]; };
+}
+
 export interface WNBAGameData {
   id: string; homeTeam: string; awayTeam: string; startTime: string;
   referee?: { name: string; foulTendency: 'strict' | 'lenient' | 'normal'; };
@@ -100,6 +110,20 @@ class ApiService {
       cache[ck] = { data: lines, ts: Date.now() };
       return lines;
     } catch (err) { console.warn('Game lines failed:', err); return []; }
+  }
+
+  async getAltLines(sport: Sport, eventId: string): Promise<AltLines | null> {
+    const ck = `alts-${sport}-${eventId}`;
+    const hit = cache[ck];
+    if (hit && Date.now() - hit.ts < TTL) return hit.data;
+    try {
+      const res = await fetch(`/api/props?sport=${sport}&type=alts&eventId=${encodeURIComponent(eventId)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || data.available === false) return null;
+      cache[ck] = { data, ts: Date.now() };
+      return data as AltLines;
+    } catch { return null; }
   }
 
   gameLinesToProps(lines: GameLine[]): PlayerProp[] {

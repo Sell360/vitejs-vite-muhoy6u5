@@ -54,6 +54,32 @@ export function BetTracker() {
 
   useEffect(() => { refreshData(); }, [refreshData]);
 
+  // Auto-snapshot CLV: fire in background for pending bets whose games have started
+  // and don't yet have a closing line recorded. Throttled to once per page load.
+  useEffect(() => {
+    if (bets.length === 0) return;
+    const candidates = bets.filter(b =>
+      b.event_id &&
+      b.closing_odds === null &&
+      new Date(b.game_time).getTime() < Date.now() - 5 * 60 * 1000 // game started 5+ min ago
+    );
+    if (candidates.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const bet of candidates.slice(0, 10)) { // cap to 10 per cycle to limit API spend
+        if (cancelled) break;
+        await snapshotClosingLine(bet.id!);
+        // Light throttle so we don't hammer the API
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (!cancelled) await refreshData();
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bets.length]);
+
   const handleSettle = async (id: string, result: 'won' | 'lost' | 'push') => {
     await settleBet(id, result);
     await refreshData();
