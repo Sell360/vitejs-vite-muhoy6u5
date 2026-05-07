@@ -75,23 +75,24 @@ function scoreLeg(odds) {
 // Build the best 3-leg parlay from a pool of legs. Each leg = {prop, pick, odds, conf}.
 function build3LegParlay(pool, skipTop = 0) {
   if (pool.length < 3 + skipTop) return null;
-  // Deduplicate by player+propType, sort by confidence
-  const seenPlayers = new Set();
-  const seenGames = new Set();
+  // Sort by confidence, then walk down the list picking legs that:
+  //  - aren't the same player+propType (no duplicating "Curry over points" twice)
+  //  - respect the underdog cap (max 2 dogs per parlay)
+  // Same-game multi-legs (SGPs) are allowed — that's how modern parlays work.
+  const sorted = pool.slice().sort((a, b) => b.confidence - a.confidence);
+  const seenPlayerProps = new Set();
   const legs = [];
   let underdogs = 0;
-  let skipped = 0;
-  for (const l of pool.sort((a, b) => b.confidence - a.confidence)) {
+  let skippedSoFar = 0;
+  for (const l of sorted) {
     if (legs.length >= 3) break;
-    const playerKey = `${l.playerName}-${l.propType}`;
-    if (seenPlayers.has(playerKey)) continue;
-    if (seenGames.has(l.gameId)) continue;
+    const key = `${l.playerName}-${l.propType}`;
+    if (seenPlayerProps.has(key)) continue;
     if (l.odds > 0 && underdogs >= 2) continue;
-    // Skip the first `skipTop` qualifying picks so a second/third parlay
-    // built from the same pool produces meaningfully different legs
-    if (skipped < skipTop) { skipped++; seenPlayers.add(playerKey); continue; }
-    seenPlayers.add(playerKey);
-    seenGames.add(l.gameId);
+    // Skip the first `skipTop` qualifying legs so a second/third parlay
+    // built from the same pool produces meaningfully different picks
+    if (skippedSoFar < skipTop) { skippedSoFar++; continue; }
+    seenPlayerProps.add(key);
     if (l.odds > 0) underdogs++;
     legs.push(l);
   }
@@ -227,11 +228,51 @@ exports.handler = async (event) => {
   candidates.sort((a, b) => b.parlay.confidence - a.parlay.confidence);
   const topPicks = candidates.slice(0, 8);
 
+  // On force re-lock, today may already have picks 1-N for some sports.
+  // Look up the existing max rank per sport so we append (e.g. rank 4, 5, 6)
+  // instead of colliding on the unique constraint.
+  const existingMaxRankBySport = {};
+  if (force) {
+    const existingRes = await new Promise((resolve) => {
+      const u = new URL(`${SUPA_URL}/rest/v1/house_picks?pick_date=eq.${today}&select=sport,rank`);
+      https.get({
+        hostname: u.hostname, path: u.pathname + u.search,
+        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+          catch { resolve([]); }
+        });
+      }).on('error', () => resolve([]));
+    });
+    if (Array.isArray(existingRes)) {
+      for (const r of existingRes) {
+        const s = r.sport;
+        if (!existingMaxRankBySport[s] || r.rank > existingMaxRankBySport[s]) {
+          existingMaxRankBySport[s] = r.rank;
+        }
+      }
+    }
+  }
+
+  // Track per-sport rank counters so we can assign sport-scoped ranks
+  // (rank 1 in mlb is independent of rank 1 in nba — the unique constraint
+  // is on (date, rank, sport) so duplicates across sports are fine)
+  const nextRankBySport = {};
+  for (const s in existingMaxRankBySport) {
+    nextRankBySport[s] = existingMaxRankBySport[s] + 1;
+  }
+
   for (let i = 0; i < topPicks.length; i++) {
     const { sport, parlay } = topPicks[i];
+    const rank = nextRankBySport[sport] || 1;
+    nextRankBySport[sport] = rank + 1;
+
     const row = {
       pick_date: today,
-      rank: i + 1,
+      rank,
       sport,
       legs: parlay.legs,
       combined_odds: parlay.combinedOdds,
@@ -245,7 +286,7 @@ exports.handler = async (event) => {
       { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, Prefer: 'return=minimal' }
     );
     if (res.status >= 200 && res.status < 300) {
-      inserted.push({ sport, rank: i + 1, tier: parlay.tier, conf: parlay.confidence });
+      inserted.push({ sport, rank, tier: parlay.tier, conf: parlay.confidence });
     } else {
       errors.push({ sport, supabaseStatus: res.status, body: res.body.slice(0, 200) });
     }
