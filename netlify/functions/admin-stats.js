@@ -3,9 +3,23 @@
 //
 // Pass your service-role key as a query param so randoms can't hit this.
 const https = require('https');
+const crypto = require('crypto');
 
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
 const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key;
+// Separate admin key — set this to a random string in Netlify env vars.
+// Don't reuse the service role key here, which would expose it in your URL/logs.
+const ADMIN_KEY = process.env.ADMIN_STATS_KEY || process.env.admin_stats_key;
+
+// Timing-safe string equality. Naive `===` returns at first byte that
+// differs, which leaks key length via response time. Constant-time compare
+// blocks remote timing attacks that try to brute-force the key.
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
+  catch { return false; }
+}
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -27,10 +41,17 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers, body: JSON.stringify({ error: 'Missing env vars' }) };
   }
 
-  // Light auth: visitor must pass service-role key as ?key= param
+  // Auth: visitor must pass ADMIN_STATS_KEY env var as ?key= param
+  // Falls back to service role for back-compat but warns if used
   const key = event.queryStringParameters?.key;
-  if (!key || key !== SUPA_SERVICE_KEY) {
-    return { statusCode: 403, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
+  const adminKeyConfigured = !!ADMIN_KEY;
+  const adminKeyMatch = adminKeyConfigured && safeEqual(key, ADMIN_KEY);
+  const fallbackMatch = !adminKeyConfigured && safeEqual(key, SUPA_SERVICE_KEY);
+  if (!adminKeyMatch && !fallbackMatch) {
+    return { statusCode: 403, headers, body: JSON.stringify({
+      error: 'Unauthorized',
+      hint: adminKeyConfigured ? 'Pass ?key=ADMIN_STATS_KEY' : 'Set ADMIN_STATS_KEY env var in Netlify',
+    }) };
   }
 
   const auth = { apikey: SUPA_SERVICE_KEY, Authorization: `Bearer ${SUPA_SERVICE_KEY}` };

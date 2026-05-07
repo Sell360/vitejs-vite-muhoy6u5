@@ -19,6 +19,19 @@ exports.handler = async (event) => {
   if (!eventId || !gameTime) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Required: eventId, gameTime (ISO)' }) };
   }
+  // Reject anything that isn't a clean event ID. Odds API event IDs are
+  // 32-char hex hashes; we accept alphanumerics + dash + underscore to
+  // accommodate variations across sports. This blocks injection attacks
+  // where eventId could otherwise inject extra Supabase REST filters
+  // (e.g. eventId=abc&user_id=neq.null to read other rows).
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(eventId)) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid eventId format' }) };
+  }
+  // Validate gameTime is a real ISO date — anything else is rejected
+  const gt = Date.parse(gameTime);
+  if (isNaN(gt)) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'gameTime must be ISO date' }) };
+  }
 
   const fetchJSON = (url, hdrs) => new Promise((resolve, reject) => {
     const u = new URL(url);

@@ -169,6 +169,16 @@ exports.handler = async (event) => {
   const errors = [];
   const force = event?.queryStringParameters?.force === '1';
 
+  // Force re-lock requires admin auth (otherwise anyone could keep
+  // triggering the picker, burning Odds API credits)
+  if (force) {
+    const ADMIN_KEY = process.env.ADMIN_STATS_KEY || process.env.admin_stats_key;
+    const key = event?.queryStringParameters?.key;
+    if (!ADMIN_KEY || key !== ADMIN_KEY) {
+      return { statusCode: 403, body: JSON.stringify({ error: 'force=1 requires admin key' }) };
+    }
+  }
+
   // Check if today's picks are already locked in (idempotency)
   // Skipped when ?force=1 is passed so we can manually re-lock
   if (!force) {

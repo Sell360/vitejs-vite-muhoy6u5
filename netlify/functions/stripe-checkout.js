@@ -64,9 +64,16 @@ exports.handler = async (event) => {
   };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
-  // Health-check endpoint — GET /api/stripe-checkout shows config status
-  // This lets us debug without running through the full UI flow
+  // Health-check endpoint — GET /api/stripe-checkout?key=ADMIN_KEY shows config status
+  // Was open to anyone during initial setup; now gated to prevent recon attacks
+  // (an attacker hitting GET could see whether you're in test/live mode and
+  // confirm which env vars exist without ever needing real credentials)
   if (event.httpMethod === 'GET') {
+    const ADMIN_KEY = process.env.ADMIN_STATS_KEY || process.env.admin_stats_key;
+    const key = event.queryStringParameters?.key;
+    if (!ADMIN_KEY || key !== ADMIN_KEY) {
+      return { statusCode: 405, headers, body: JSON.stringify({ error: 'POST only' }) };
+    }
     // Show ALL stripe/supabase-related env vars we can see, regardless of case
     const allEnv = {};
     Object.keys(process.env).forEach(k => {
