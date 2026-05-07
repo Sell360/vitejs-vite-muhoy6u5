@@ -165,7 +165,26 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
     });
   }, []);
 
-  const merged = mergeGamesWithLines(games, lines);
+  // Filter out final/completed games — they're not actionable for betting
+  // and the Odds API often serves stale post-game lines like -10000 / +1460
+  // which indicate the line is functionally closed (game already decided).
+  // A line wider than +/-2500 usually means the book has already settled this
+  // game internally and the API is just echoing the closed-out price.
+  const isClosedLine = (line: GameLine | null | undefined) => {
+    if (!line) return false;
+    const homeAbs = Math.abs(line.homeML ?? 0);
+    const awayAbs = Math.abs(line.awayML ?? 0);
+    return homeAbs > 2500 || awayAbs > 2500;
+  };
+
+  const merged = mergeGamesWithLines(games, lines).filter(({ game, line }) => {
+    // Hide final games entirely — you can't bet them
+    if (game.status === 'final') return false;
+    // For scheduled/live games, hide if lines have already closed out
+    // (sportsbook stopped accepting bets and is showing settlement prices)
+    if (game.status === 'live' && isClosedLine(line)) return false;
+    return true;
+  });
 
   const combinedOdds = slip.length > 1
     ? decimalToAmerican(slip.reduce((acc, l) => acc * americanToDecimal(l.odds), 1))
