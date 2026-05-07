@@ -27,10 +27,21 @@ export interface MockBet {
 }
 
 export interface BetLeg {
+  // Original (kept for back-compat)
   matchup: string;
-  bet_type: string;
-  pick: string;
+  bet_type?: string;
+  pick?: string;
   odds: number;
+  // Extended fields used by auto-settler
+  sport?: string;
+  gameId?: string;
+  gameTime?: string | null;
+  betType?: 'ML' | 'SPREAD' | 'TOTAL' | 'PROP';
+  side?: 'home' | 'away' | 'over' | 'under' | null;
+  line?: number | null;
+  label?: string;
+  player?: string;
+  propType?: string;
 }
 
 // ─── ODDS MATH ────────────────────────────────────────────────────────────

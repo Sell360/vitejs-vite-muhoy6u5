@@ -16,8 +16,9 @@
 // back to 'pending_review' for admin manual settle (the existing flow).
 const https = require('https');
 
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
+// Prefer service role key (bypasses RLS on writes); fall back to anon for read-only environments
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
 // ─── ESPN ENDPOINT MAP ────────────────────────────────────────────────────
 // Path → ESPN's public site.api.espn.com structure: /apis/site/v2/sports/{sport}/{league}
@@ -262,10 +263,18 @@ function gradeLeg(line, pick, actual) {
   return null;
 }
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
   if (!SUPA_URL || !SUPA_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+    return { statusCode: 500, headers, body: JSON.stringify({
+      error: 'Missing env vars',
+      hasSupaUrl: !!SUPA_URL,
+      hasSupaKey: !!SUPA_KEY,
+    }) };
   }
+  // GET allowed so you can hit https://betz360.com/api/auto-settle-picks
+  // in a browser to trigger settlement on demand.
+  void event;
 
   // Fetch pending picks from last 7 days
   const sinceDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

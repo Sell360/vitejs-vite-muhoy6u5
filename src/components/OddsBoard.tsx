@@ -499,7 +499,9 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                 <button
                   onClick={async () => {
                     setLogged(false);
-                    for (const leg of slip) {
+                    if (slip.length === 1) {
+                      // Single-leg: log as the original bet type
+                      const leg = slip[0];
                       const game = games.find(g => g.id === leg.gameId);
                       await logBet({
                         user_id: user.id,
@@ -512,8 +514,61 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                         pick_side: leg.side,
                         line: null,
                         odds: leg.odds,
-                        stake: stakeNum / slip.length,
+                        stake: stakeNum,
                         legs: null,
+                        status: 'pending',
+                      });
+                    } else {
+                      // Multi-leg: log as a SINGLE parlay bet with combined odds
+                      // and per-leg detail in the legs JSONB column. The
+                      // auto-settler reads legs[] to grade each one separately.
+                      const decimalOdds = slip.reduce((acc, l) => {
+                        const dec = l.odds > 0 ? l.odds / 100 + 1 : 100 / Math.abs(l.odds) + 1;
+                        return acc * dec;
+                      }, 1);
+                      // Convert combined decimal odds back to American
+                      const combinedAmerican = decimalOdds >= 2
+                        ? Math.round((decimalOdds - 1) * 100)
+                        : Math.round(-100 / (decimalOdds - 1));
+
+                      // Use the earliest start time across all legs as the game_time
+                      // so the auto-settler has something sensible for the "game has
+                      // ended" lookback window. The legs[] array carries each leg's
+                      // own gameTime so settlement uses each leg's own time.
+                      const earliestStart = slip.reduce((earliest, l) => {
+                        const g = games.find(gm => gm.id === l.gameId);
+                        const t = g?.startTime || new Date().toISOString();
+                        return (!earliest || t < earliest) ? t : earliest;
+                      }, '' as string);
+
+                      const matchupSummary = slip.map(l => l.label).join(' + ');
+
+                      await logBet({
+                        user_id: user.id,
+                        sport: slip[0].sport, // representative; legs may span sports
+                        event_id: null,
+                        game_time: earliestStart || new Date().toISOString(),
+                        matchup: `${slip.length}-leg parlay`,
+                        bet_type: 'PARLAY',
+                        pick_label: matchupSummary,
+                        pick_side: null,
+                        line: null,
+                        odds: combinedAmerican,
+                        stake: stakeNum,
+                        legs: slip.map(l => {
+                          const g = games.find(gm => gm.id === l.gameId);
+                          return {
+                            sport: l.sport,
+                            gameId: l.gameId,
+                            matchup: l.matchup,
+                            gameTime: g?.startTime || null,
+                            betType: l.betType,
+                            side: l.side,
+                            line: null,
+                            label: l.label,
+                            odds: l.odds,
+                          };
+                        }),
                         status: 'pending',
                       });
                     }
@@ -522,7 +577,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                   }}
                   style={{ width: '100%', padding: '10px', marginBottom: 8, background: logged ? 'rgba(74,222,128,.2)' : 'linear-gradient(135deg, rgba(99,102,241,.18), rgba(99,102,241,.08))', color: logged ? '#4ade80' : '#818cf8', border: `1px solid ${logged ? 'rgba(74,222,128,.4)' : 'rgba(99,102,241,.3)'}`, borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: "'Barlow', sans-serif" }}
                 >
-                  {logged ? '✓ Bet logged to tracker!' : `📊 Log as mock bet ($${stakeNum.toFixed(0)} stake)`}
+                  {logged ? '✓ Bet logged to tracker!' : slip.length > 1 ? `📊 Log as ${slip.length}-leg parlay ($${stakeNum.toFixed(0)} stake)` : `📊 Log as mock bet ($${stakeNum.toFixed(0)} stake)`}
                 </button>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
