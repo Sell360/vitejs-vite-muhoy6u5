@@ -200,17 +200,23 @@ exports.handler = async (event) => {
 
   // Generate up to 3 parlays per sport (varying difficulty), keep top 8 overall
   const candidates = [];
+  const skipped = [];
   for (const { sport, oddsKey, propMarkets } of PICK_SPORTS) {
     try {
       const legs = await fetchSportProps(sport, oddsKey, propMarkets);
-      if (legs.length < 3) continue;
+      if (legs.length < 3) {
+        skipped.push({ sport, reason: `only ${legs.length} valid props found` });
+        continue;
+      }
       // Build a top parlay, then a second one skipping the top 3 picks, then
       // a third one skipping 6 — produces three meaningfully different parlays
       // per sport instead of one. Smaller pools may only support 1-2.
+      let builtCount = 0;
       for (const skipTop of [0, 3, 6]) {
         const parlay = build3LegParlay(legs, skipTop);
-        if (parlay) candidates.push({ sport, parlay });
+        if (parlay) { candidates.push({ sport, parlay }); builtCount++; }
       }
+      if (builtCount === 0) skipped.push({ sport, reason: `${legs.length} legs but no valid 3-leg parlay` });
     } catch (e) {
       errors.push({ sport, error: String(e) });
     }
@@ -248,6 +254,6 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: today, inserted, errors, ts: new Date().toISOString() }),
+    body: JSON.stringify({ date: today, inserted, skipped, errors, ts: new Date().toISOString() }),
   };
 };
