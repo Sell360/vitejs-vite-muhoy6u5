@@ -9,11 +9,11 @@
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (for looking up user)
 const https = require('https');
 
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-const PRICE_MONTHLY = process.env.STRIPE_PRICE_ID_MONTHLY;
-const PRICE_ANNUAL  = process.env.STRIPE_PRICE_ID_ANNUAL;
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || process.env.stripe_secret_key;
+const PRICE_MONTHLY = process.env.STRIPE_PRICE_ID_MONTHLY || process.env.stripe_price_id_monthly;
+const PRICE_ANNUAL  = process.env.STRIPE_PRICE_ID_ANNUAL  || process.env.stripe_price_id_annual;
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
+const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key;
 
 function stripeRequest(path, body, method = 'POST') {
   return new Promise((resolve, reject) => {
@@ -67,6 +67,14 @@ exports.handler = async (event) => {
   // Health-check endpoint — GET /api/stripe-checkout shows config status
   // This lets us debug without running through the full UI flow
   if (event.httpMethod === 'GET') {
+    // Show ALL stripe/supabase-related env vars we can see, regardless of case
+    const allEnv = {};
+    Object.keys(process.env).forEach(k => {
+      if (/stripe|supabase|odds|weather/i.test(k)) {
+        const v = process.env[k];
+        allEnv[k] = v ? `${v.slice(0, 8)}... (len=${v.length})` : '(empty)';
+      }
+    });
     return {
       statusCode: 200, headers,
       body: JSON.stringify({
@@ -80,7 +88,10 @@ exports.handler = async (event) => {
           annualPricePrefix: PRICE_ANNUAL ? PRICE_ANNUAL.slice(0, 12) : null,
           hasSupabaseServiceKey: !!SUPA_SERVICE_KEY,
         },
-      }),
+        // Lists every env var the function can see that mentions our keywords —
+        // this exposes case mismatches and renamed/missing vars
+        allRelevantEnvVarsVisible: allEnv,
+      }, null, 2),
     };
   }
 

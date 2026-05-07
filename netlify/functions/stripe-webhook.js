@@ -12,10 +12,10 @@
 const https = require('https');
 const crypto = require('crypto');
 
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || process.env.stripe_secret_key;
+const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || process.env.stripe_webhook_secret;
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
+const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key;
 
 // Verify Stripe webhook signature (security-critical — without this, anyone
 // could POST fake events to flip is_pro on any user)

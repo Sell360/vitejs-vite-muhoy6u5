@@ -2,9 +2,9 @@
 // their subscription themselves. Called from the user's account settings.
 const https = require('https');
 
-const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY;
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || process.env.stripe_secret_key;
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
+const SUPA_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key;
 
 function stripeRequest(path, body) {
   return new Promise((resolve, reject) => {
