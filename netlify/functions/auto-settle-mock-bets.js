@@ -346,43 +346,22 @@ async function settleAndUpdateBankroll(bet, status) {
     payout = bet.stake;
   }
 
-  // We can't use the SECURITY DEFINER function directly because it checks
-  // auth.uid() which is null in a service-role context. Instead, write
-  // the bet status + adjust bankroll separately using the service role key.
+  // Mark the bet settled first
   await patchBet(bet.id, {
     status,
     payout,
     settled_at: new Date().toISOString(),
   });
 
-  // Update user bankroll
+  // Adjust user bankroll. We use the service role key which bypasses RLS,
+  // letting us update any user's bankroll row directly. Read-then-write is
+  // safe here because each bet is processed serially in the for-loop above
+  // (no concurrent settlements per user within a single function run).
   const profit = payout - bet.stake;
-  const u = new URL(`${SUPA_URL}/rest/v1/rpc/admin_adjust_bankroll`);
-  // If the RPC doesn't exist, we'll fall back to a direct UPDATE via service role
-  const data = JSON.stringify({ p_user_id: bet.user_id, p_delta: profit });
-  await new Promise((resolve) => {
-    const req = https.request({
-      hostname: u.hostname, path: u.pathname, method: 'POST',
-      headers: {
-        'apikey': SUPA_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode }));
-    });
-    req.on('error', () => resolve({ status: 500 }));
-    req.write(data); req.end();
-  });
-  // If RPC failed, use direct profile update with service role (bypasses RLS)
-  // (Service role can update any row.)
-  const upd = JSON.stringify({ bankroll: { increment: profit } });
-  // Postgres doesn't support direct increment in PATCH — so we read-then-write
+  if (profit === 0) return; // push or 0 stake — nothing to adjust
+
   const profUrl = new URL(`${SUPA_URL}/rest/v1/profiles?id=eq.${bet.user_id}&select=bankroll`);
-  const profRes = await new Promise((resolve, reject) => {
+  const profRes = await new Promise((resolve) => {
     https.get({
       hostname: profUrl.hostname, path: profUrl.pathname + profUrl.search,
       headers: { apikey: SUPA_SERVICE_KEY, Authorization: `Bearer ${SUPA_SERVICE_KEY}` },
@@ -393,27 +372,27 @@ async function settleAndUpdateBankroll(bet, status) {
         try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
         catch { resolve([]); }
       });
-    }).on('error', reject);
+    }).on('error', () => resolve([]));
   });
-  if (Array.isArray(profRes) && profRes[0]) {
-    const newBankroll = Number(profRes[0].bankroll) + profit;
-    const patchUrl = new URL(`${SUPA_URL}/rest/v1/profiles?id=eq.${bet.user_id}`);
-    const patchData = JSON.stringify({ bankroll: newBankroll });
-    await new Promise((resolve) => {
-      const req = https.request({
-        hostname: patchUrl.hostname, path: patchUrl.pathname + patchUrl.search, method: 'PATCH',
-        headers: {
-          'apikey': SUPA_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(patchData),
-          'Prefer': 'return=minimal',
-        },
-      }, (res) => { res.on('data',()=>{}); res.on('end', () => resolve(res.statusCode)); });
-      req.on('error', () => resolve(500));
-      req.write(patchData); req.end();
-    });
-  }
+  if (!Array.isArray(profRes) || !profRes[0]) return;
+
+  const newBankroll = Number(profRes[0].bankroll) + profit;
+  const patchUrl = new URL(`${SUPA_URL}/rest/v1/profiles?id=eq.${bet.user_id}`);
+  const patchData = JSON.stringify({ bankroll: newBankroll });
+  await new Promise((resolve) => {
+    const req = https.request({
+      hostname: patchUrl.hostname, path: patchUrl.pathname + patchUrl.search, method: 'PATCH',
+      headers: {
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(patchData),
+        'Prefer': 'return=minimal',
+      },
+    }, (res) => { res.on('data', () => {}); res.on('end', () => resolve(res.statusCode)); });
+    req.on('error', () => resolve(500));
+    req.write(patchData); req.end();
+  });
 }
 
 exports.handler = async (event) => {
