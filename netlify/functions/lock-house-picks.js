@@ -7,8 +7,8 @@
 const https = require('https');
 
 const ODDS_KEY = process.env.ODDS_API_KEY;
-const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPA_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
 // Active sports rotation: try MLB first (most volume), then NBA, then NFL
 const PICK_SPORTS = [
@@ -73,19 +73,23 @@ function scoreLeg(odds) {
 }
 
 // Build the best 3-leg parlay from a pool of legs. Each leg = {prop, pick, odds, conf}.
-function build3LegParlay(pool) {
-  if (pool.length < 3) return null;
+function build3LegParlay(pool, skipTop = 0) {
+  if (pool.length < 3 + skipTop) return null;
   // Deduplicate by player+propType, sort by confidence
   const seenPlayers = new Set();
   const seenGames = new Set();
   const legs = [];
   let underdogs = 0;
+  let skipped = 0;
   for (const l of pool.sort((a, b) => b.confidence - a.confidence)) {
     if (legs.length >= 3) break;
     const playerKey = `${l.playerName}-${l.propType}`;
     if (seenPlayers.has(playerKey)) continue;
     if (seenGames.has(l.gameId)) continue;
-    if (l.odds > 0 && underdogs >= 2) continue; // max 2 dogs
+    if (l.odds > 0 && underdogs >= 2) continue;
+    // Skip the first `skipTop` qualifying picks so a second/third parlay
+    // built from the same pool produces meaningfully different legs
+    if (skipped < skipTop) { skipped++; seenPlayers.add(playerKey); continue; }
     seenPlayers.add(playerKey);
     seenGames.add(l.gameId);
     if (l.odds > 0) underdogs++;
@@ -154,7 +158,7 @@ async function fetchSportProps(sport, oddsKey, propMarkets) {
   return allLegs;
 }
 
-exports.handler = async () => {
+exports.handler = async (event) => {
   if (!ODDS_KEY || !SUPA_URL || !SUPA_KEY) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
   }
@@ -162,8 +166,11 @@ exports.handler = async () => {
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const inserted = [];
   const errors = [];
+  const force = event?.queryStringParameters?.force === '1';
 
   // Check if today's picks are already locked in (idempotency)
+  // Skipped when ?force=1 is passed so we can manually re-lock
+  if (!force) {
   const checkRes = await fetchJSON(`${SUPA_URL}/rest/v1/house_picks?pick_date=eq.${today}&select=id`)
     .catch(() => null);
   // Note: this check requires the supabase REST headers — we'll do it with proper headers
@@ -186,29 +193,36 @@ exports.handler = async () => {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'already_locked', date: today, existing: existingRes.length }),
+      body: JSON.stringify({ status: 'already_locked', date: today, existing: existingRes.length, hint: 'add ?force=1 to re-lock today' }),
     };
   }
+  } // end !force
 
-  // Generate one pick per active sport, top 3 overall
+  // Generate up to 3 parlays per sport (varying difficulty), keep top 8 overall
   const candidates = [];
   for (const { sport, oddsKey, propMarkets } of PICK_SPORTS) {
     try {
       const legs = await fetchSportProps(sport, oddsKey, propMarkets);
       if (legs.length < 3) continue;
-      const parlay = build3LegParlay(legs);
-      if (parlay && parlay.tier !== 'B') candidates.push({ sport, parlay });
+      // Build a top parlay, then a second one skipping the top 3 picks, then
+      // a third one skipping 6 — produces three meaningfully different parlays
+      // per sport instead of one. Smaller pools may only support 1-2.
+      for (const skipTop of [0, 3, 6]) {
+        const parlay = build3LegParlay(legs, skipTop);
+        if (parlay) candidates.push({ sport, parlay });
+      }
     } catch (e) {
       errors.push({ sport, error: String(e) });
     }
   }
 
-  // Sort candidates by confidence, take top 3
+  // Sort by confidence, take top 8 overall — gives users a meaningful set of
+  // picks to follow each day across all in-season sports
   candidates.sort((a, b) => b.parlay.confidence - a.parlay.confidence);
-  const top3 = candidates.slice(0, 3);
+  const topPicks = candidates.slice(0, 8);
 
-  for (let i = 0; i < top3.length; i++) {
-    const { sport, parlay } = top3[i];
+  for (let i = 0; i < topPicks.length; i++) {
+    const { sport, parlay } = topPicks[i];
     const row = {
       pick_date: today,
       rank: i + 1,
