@@ -10,6 +10,7 @@ import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
 import { HousePicks } from './components/HousePicks';
 import { CascadeEdgeCard } from './components/CascadeEdgeCard';
+import { LandingHero } from './components/LandingHero';
 import { ProGate, UpgradeModal } from './components/ProGate';
 import { NotificationToaster } from './components/NotificationToaster';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -34,10 +35,11 @@ export default function Betz360() {
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedGameId, setSelectedGameId] = useState<string|null>(null);
   const [propView, setPropView] = useState<'parlay'|'props'>('parlay');
-  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'|'picks'|'admin'>('parlays');
   const [authOpen, setAuthOpen] = useState(false);
   const { user, username, isAdmin, isPro, refreshProfile } = useAuth();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  // Logged-out visitors land on Games (free content + hero); logged-in users default to Parlays
+  const [tab, setTab] = useState<'games'|'parlays'|'cross'|'tracker'|'board'|'picks'|'admin'>(user ? 'parlays' : 'games');
 
   // Detect post-checkout redirect (?subscribed=1) and refresh profile so
   // is_pro flips on instantly without waiting for next page load
@@ -585,6 +587,18 @@ export default function Betz360() {
 
       {/* ── MAIN ── */}
       <main id="b360-main">
+
+        {/* Landing hero — auto-hides when user is signed in */}
+        {tab==='games' && (
+          <LandingHero
+            onSignUp={() => setAuthOpen(true)}
+            onViewPicks={() => setTab('picks')}
+            onViewGames={() => {
+              const main = document.getElementById('b360-main');
+              if (main) main.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
+        )}
 
         {(tab==='games'||tab==='parlays') && (
           <div className={tab==='games' ? '' : 'b360-two-col'}>
