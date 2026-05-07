@@ -26,7 +26,7 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
   if (user) return null;
 
   return (
-    <div style={{
+    <div className="b360-landing-hero" style={{
       position: 'relative',
       marginBottom: 28,
       padding: '36px 28px 32px',
@@ -48,17 +48,29 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
         pointerEvents: 'none',
       }}/>
 
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 28, alignItems: 'center' }}>
+      <div className="b360-landing-grid" style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 28, alignItems: 'center' }}>
         {/* LEFT — copy + CTAs */}
         <div>
+          {/* Big logo above the headline — fills the dead space and reinforces brand */}
+          <img
+            src="/betz360-hero.webp"
+            alt="Betz360"
+            className="b360-landing-logo"
+            style={{
+              maxWidth: 320, width: '100%', height: 'auto',
+              marginBottom: 14, marginLeft: -18, // negative margin so the logo glow extends slightly past the card edge
+              filter: 'drop-shadow(0 0 20px rgba(168,85,247,.25))',
+            }}
+          />
+
           <div style={{
             fontSize: 10, fontWeight: 800, letterSpacing: 2.5, textTransform: 'uppercase',
-            color: '#c084fc', marginBottom: 12,
+            color: '#c084fc', marginBottom: 10,
           }}>The Cascade Edge Engine</div>
 
-          <h1 style={{
+          <h1 className="b360-landing-h1" style={{
             fontFamily: "'Permanent Marker', 'Barlow Condensed', sans-serif",
-            fontSize: 44, lineHeight: 1.05, margin: 0,
+            fontSize: 38, lineHeight: 1.05, margin: 0,
             background: 'linear-gradient(90deg, #22d3ee 0%, #c084fc 50%, #f472b6 100%)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             letterSpacing: 1,
@@ -93,6 +105,44 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
               cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
             }}>Browse today's games</button>
           </div>
+
+          {/* DraftKings deep-link card — fills dead space, gives a clear "go bet" path */}
+          <a
+            href="https://sportsbook.draftkings.com/"
+            target="_blank"
+            rel="noopener noreferrer sponsored"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              marginTop: 16, padding: '12px 14px',
+              background: 'linear-gradient(90deg, rgba(0,255,136,.06), rgba(0,255,136,.02))',
+              border: '1px solid rgba(0,255,136,.2)',
+              borderRadius: 10, textDecoration: 'none',
+              maxWidth: 480,
+              transition: 'all .15s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(90deg, rgba(0,255,136,.1), rgba(0,255,136,.05))'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(90deg, rgba(0,255,136,.06), rgba(0,255,136,.02))'; }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: 7,
+              background: '#000', color: '#00ff88',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: 14, fontWeight: 900, letterSpacing: -.5,
+              border: '1px solid rgba(0,255,136,.4)',
+              flexShrink: 0,
+            }}>DK</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontSize: 13, fontWeight: 800, color: '#c8ddf0', letterSpacing: .3, lineHeight: 1.1,
+              }}>Place your bets at DraftKings</div>
+              <div style={{ fontSize: 10, color: '#4a6080', fontWeight: 600, marginTop: 2, lineHeight: 1.3 }}>
+                Found an edge? Tap to open DraftKings Sportsbook in a new tab.
+              </div>
+            </div>
+            <div style={{ fontSize: 14, color: '#00ff88', fontWeight: 900 }}>↗</div>
+          </a>
 
           {/* Trust signals */}
           <div style={{
@@ -173,11 +223,19 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
         <FeatureChip icon="📈" title="CLV Tracking" desc="The only proven sharpness metric" />
       </div>
 
-      {/* Mobile: stack the grid */}
+      {/* Mobile: stack the grid, shrink type, fix logo margin */}
       <style>{`
-        @media (max-width: 760px) {
-          .b360-landing-grid { grid-template-columns: 1fr !important; }
-          .b360-landing-h1 { font-size: 32px !important; }
+        @media (max-width: 900px) {
+          .b360-landing-grid { grid-template-columns: 1fr !important; gap: 18px !important; }
+        }
+        @media (max-width: 600px) {
+          .b360-landing-hero { padding: 24px 18px !important; }
+          .b360-landing-h1 { font-size: 28px !important; letter-spacing: .5px !important; }
+          .b360-landing-logo { max-width: 240px !important; margin-left: 0 !important; }
+        }
+        @media (max-width: 400px) {
+          .b360-landing-h1 { font-size: 24px !important; }
+          .b360-landing-logo { max-width: 200px !important; }
         }
       `}</style>
     </div>
