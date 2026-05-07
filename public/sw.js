@@ -3,7 +3,7 @@
 // stale-while-revalidate for app shell (instant load + background update).
 // Caches are versioned so we can invalidate on deploy.
 
-const VERSION = 'betz360-v3';
+const VERSION = 'betz360-v4';
 const SHELL_CACHE = `${VERSION}-shell`;
 const APP_SHELL = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
