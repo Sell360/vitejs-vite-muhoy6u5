@@ -104,6 +104,13 @@ class ApiService {
     try {
       const res = await fetch(`/api/props?sport=${sport}&type=games`);
       if (!res.ok) throw new Error(`${res.status}`);
+      // Capture the underlying-data timestamp from server. This is when
+      // the Odds API was last polled, NOT when our function ran. So if
+      // we're serving cached data from 30 minutes ago, this header will
+      // say 30 minutes ago, not now. That's what users need to see —
+      // the freshness of the actual lines, not our cache hit time.
+      const fetchedAt = Number(res.headers.get('X-Lines-Fetched-At')) || Date.now();
+      this.linesFetchedAt[sport] = fetchedAt;
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const lines = Array.isArray(data) ? data : [];
@@ -111,6 +118,13 @@ class ApiService {
       return lines;
     } catch (err) { console.warn('Game lines failed:', err); return []; }
   }
+
+  // Public getter so OddsBoard can show "Lines refreshed X min ago"
+  // Returns undefined for sports that haven't been loaded yet.
+  getLinesFetchedAt(sport: Sport): number | undefined {
+    return this.linesFetchedAt[sport];
+  }
+  private linesFetchedAt: Partial<Record<Sport, number>> = {};
 
   async getAltLines(sport: Sport, eventId: string): Promise<AltLines | null> {
     const ck = `alts-${sport}-${eventId}`;

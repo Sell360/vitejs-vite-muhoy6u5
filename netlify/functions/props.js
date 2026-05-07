@@ -41,7 +41,11 @@ const PROP_LABELS = {
 };
 
 exports.handler = async (event) => {
-  const headers = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' };
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': 'X-Lines-Fetched-At',
+    'Content-Type': 'application/json',
+  };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
 
   const { sport, type } = event.queryStringParameters || {};
@@ -88,7 +92,13 @@ exports.handler = async (event) => {
 
   const cache = loadCache();
   if (isCacheValid(cache[cacheKey], ttlMinutes)) {
-    return { statusCode: 200, headers, body: JSON.stringify(cache[cacheKey].data) };
+    // Include the original fetch timestamp so the client can show
+    // 'Lines refreshed X min ago' and warn users to verify on the book
+    return {
+      statusCode: 200,
+      headers: { ...headers, 'X-Lines-Fetched-At': String(cache[cacheKey].ts) },
+      body: JSON.stringify(cache[cacheKey].data),
+    };
   }
 
   const get = (url) => new Promise((resolve, reject) => {
@@ -128,8 +138,13 @@ exports.handler = async (event) => {
         };
       });
 
-      cache[cacheKey] = { data: games, ts: Date.now() }; saveCache(cache);
-      return { statusCode: 200, headers, body: JSON.stringify(games) };
+      const fetchedAt = Date.now();
+      cache[cacheKey] = { data: games, ts: fetchedAt }; saveCache(cache);
+      return {
+        statusCode: 200,
+        headers: { ...headers, 'X-Lines-Fetched-At': String(fetchedAt) },
+        body: JSON.stringify(games),
+      };
     }
 
     // ── Alternate lines — 1 credit per game (alts only) ─────────────────

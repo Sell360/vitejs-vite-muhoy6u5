@@ -115,6 +115,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
   const [logged, setLogged] = useState(false);
   const [lines, setLines] = useState<GameLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
+  const [linesFetchedAt, setLinesFetchedAt] = useState<number | undefined>(undefined);
   const [reversals, setReversals] = useState<Map<string, ReversalSignal>>(new Map());
   const [slip, setSlip] = useState<BetSlipLeg[]>([]);
   const [stake, setStake] = useState('25');
@@ -124,7 +125,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
     if (games.length === 0) return;
     setLinesLoading(true);
     apiService.getGameLines(sport)
-      .then(setLines)
+      .then(l => { setLines(l); setLinesFetchedAt(apiService.getLinesFetchedAt(sport)); })
       .catch(() => setLines([]))
       .finally(() => setLinesLoading(false));
     // Background load reversal signals
@@ -211,6 +212,54 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
           .b360-odds-row { grid-template-columns: 110px 1fr 1fr 1fr; }
         }
       `}</style>
+
+      {/* ── LINE FRESHNESS BANNER ──
+          Shows users when our lines were last refreshed from the underlying
+          sportsbook feed. Lines are cached up to 60 minutes to manage API
+          costs, so a line shown here may be a few minutes to an hour old.
+          We always link out to the actual book (DraftKings) so users can
+          confirm the live price before placing a real bet. */}
+      {linesFetchedAt && (() => {
+        const ageMin = Math.floor((Date.now() - linesFetchedAt) / 60000);
+        const ageLabel = ageMin < 1 ? 'just now'
+          : ageMin === 1 ? '1 min ago'
+          : ageMin < 60 ? `${ageMin} min ago`
+          : `${Math.floor(ageMin / 60)}h ${ageMin % 60}m ago`;
+        const stale = ageMin >= 30;
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 8, flexWrap: 'wrap',
+            padding: '8px 12px', marginBottom: 10,
+            background: stale ? 'rgba(251,191,36,.08)' : 'rgba(56,189,248,.06)',
+            border: `1px solid ${stale ? 'rgba(251,191,36,.25)' : 'rgba(56,189,248,.18)'}`,
+            borderRadius: 8,
+            fontSize: 11, color: '#8ab0cc',
+            fontFamily: "'Barlow', sans-serif",
+          }}>
+            <span>
+              <span style={{ color: stale ? '#fbbf24' : '#38bdf8', fontWeight: 800 }}>
+                {stale ? '⚠️' : '⏱'} Lines refreshed {ageLabel}
+              </span>
+              <span style={{ marginLeft: 6, color: '#4a6080' }}>
+                · Sourced from DraftKings via The Odds API · Verify before placing real bets
+              </span>
+            </span>
+            <a
+              href="https://sportsbook.draftkings.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '4px 10px',
+                background: 'rgba(74,222,128,.12)', color: '#4ade80',
+                border: '1px solid rgba(74,222,128,.3)', borderRadius: 6,
+                fontSize: 11, fontWeight: 800, textDecoration: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >🔗 Verify on DraftKings</a>
+          </div>
+        );
+      })()}
 
       {/* ── COLUMN HEADERS ── */}
       <div className="b360-odds-row" style={{

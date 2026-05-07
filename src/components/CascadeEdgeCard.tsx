@@ -46,6 +46,17 @@ export function CascadeEdgeCard() {
           <SignalRow num="6" title="Public ticket vs. handle" desc="Ticket-count gaps vs. money-handle gaps reveal where sharp positioning is hiding." />
         </div>
 
+        <div style={{
+          marginTop: 14, padding: '10px 12px',
+          background: 'rgba(56,189,248,.05)',
+          border: '1px solid rgba(56,189,248,.15)',
+          borderRadius: 8,
+          fontSize: 11, color: '#8ab0cc', lineHeight: 1.55,
+        }}>
+          <span style={{ color: '#38bdf8', fontWeight: 800 }}>How our lines work:</span>{' '}
+          We aggregate live moneyline, spread, and total prices from DraftKings, FanDuel, and BetMGM via The Odds API. Lines are refreshed up to every 60 minutes to manage data costs — for the absolute live price, click through to your sportsbook before placing. Our edge isn&apos;t the line itself; it&apos;s the sharp-money, AI projection, and CLV signal we layer on top.
+        </div>
+
         <div style={{ marginTop: 16, fontSize: 10, color: '#1a3060', fontWeight: 600, letterSpacing: .3 }}>
           Bet responsibly. 21+. Past performance does not guarantee future results. Not financial advice.
         </div>
