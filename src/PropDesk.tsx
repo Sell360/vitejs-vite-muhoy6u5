@@ -108,12 +108,12 @@ export default function Betz360() {
           position: sticky; top: 0; z-index: 200;
         }
         #b360-topbar {
-          max-width: 1500px; margin: 0 auto;
+          max-width: 1800px; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
           padding: 0 20px; height: 48px; gap: 16px;
         }
         #b360-toolbar {
-          max-width: 1500px; margin: 0 auto;
+          max-width: 1800px; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between;
           padding: 6px 20px; gap: 10px;
           border-top: 1px solid rgba(255,255,255,.04);
@@ -201,7 +201,7 @@ export default function Betz360() {
         }
         #b360-sportrail::-webkit-scrollbar { height: 0; }
         .b360-sport-inner {
-          max-width: 1500px; margin: 0 auto;
+          max-width: 1800px; margin: 0 auto;
           display: flex; align-items: stretch;
           padding: 0 16px; gap: 0;
         }
@@ -247,7 +247,7 @@ export default function Betz360() {
           border-top: 1px solid rgba(255,255,255,.04);
         }
         .b360-nav-inner {
-          max-width: 1500px; margin: 0 auto;
+          max-width: 1800px; margin: 0 auto;
           display: flex; align-items: center; padding: 6px 16px; gap: 4px;
         }
         .b360-nav-btn {
@@ -276,7 +276,7 @@ export default function Betz360() {
           background: rgba(4,8,20,.9); border-top: 1px solid rgba(255,255,255,.05);
           backdrop-filter: blur(20px);
         }
-        .b360-ai-inner { max-width: 1500px; margin: 0 auto; padding: 10px 20px; }
+        .b360-ai-inner { max-width: 1800px; margin: 0 auto; padding: 10px 20px; }
         .b360-inp {
           flex: 1; height: 36px; background: rgba(255,255,255,.04);
           color: #dce6f0; border: 1px solid rgba(255,255,255,.09);
@@ -303,12 +303,12 @@ export default function Betz360() {
         /* ── STATUS ── */
         .b360-status {
           background: rgba(0,0,0,.3); border-top: 1px solid rgba(255,255,255,.03);
-          padding: 3px 20px; max-width: 1500px; margin: 0 auto;
+          padding: 3px 20px; max-width: 1800px; margin: 0 auto;
           display: flex; gap: 12px; font-size: 11px; font-weight: 600;
         }
 
         /* ── MAIN LAYOUT ── */
-        #b360-main { flex: 1; max-width: 1500px; margin: 0 auto; width: 100%; padding: 14px 20px 28px; }
+        #b360-main { flex: 1; max-width: 1800px; margin: 0 auto; width: 100%; padding: 14px 20px 28px; }
         .b360-two-col { display: grid; grid-template-columns: 300px 1fr; gap: 14px; }
         .b360-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
         .b360-slabel {
@@ -353,7 +353,7 @@ export default function Betz360() {
           padding: 10px 20px; background: rgba(0,0,0,.25);
         }
         .b360-footer-inner {
-          max-width: 1500px; margin: 0 auto;
+          max-width: 1800px; margin: 0 auto;
           display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
         }
 
