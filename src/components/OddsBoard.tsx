@@ -166,11 +166,12 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
     });
   }, []);
 
-  // Filter out final/completed games — they're not actionable for betting
-  // and the Odds API often serves stale post-game lines like -10000 / +1460
-  // which indicate the line is functionally closed (game already decided).
-  // A line wider than +/-2500 usually means the book has already settled this
-  // game internally and the API is just echoing the closed-out price.
+  // Hide ONLY games where the lines are obvious post-game garbage —
+  // the Odds API sometimes serves stale settlement-price lines like
+  // -10000 / +1460 on completed games. Anything more extreme than
+  // +/-2500 means the book has functionally closed the line. We still
+  // show final games (with their scores) so users can see what
+  // happened — we just don't pretend their stale lines are bettable.
   const isClosedLine = (line: GameLine | null | undefined) => {
     if (!line) return false;
     const homeAbs = Math.abs(line.homeML ?? 0);
@@ -178,13 +179,13 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
     return homeAbs > 2500 || awayAbs > 2500;
   };
 
-  const merged = mergeGamesWithLines(games, lines).filter(({ game, line }) => {
-    // Hide final games entirely — you can't bet them
-    if (game.status === 'final') return false;
-    // For scheduled/live games, hide if lines have already closed out
-    // (sportsbook stopped accepting bets and is showing settlement prices)
-    if (game.status === 'live' && isClosedLine(line)) return false;
-    return true;
+  // For final games, blank out the lines so we don't render garbage prices.
+  // For live games with closed lines, do the same. Scheduled games always
+  // keep their lines (they aren't expired yet).
+  const merged = mergeGamesWithLines(games, lines).map(({ game, line }) => {
+    if (game.status === 'final') return { game, line: null };
+    if (game.status === 'live' && isClosedLine(line)) return { game, line: null };
+    return { game, line };
   });
 
   const combinedOdds = slip.length > 1

@@ -474,7 +474,7 @@ export default function Betz360() {
               <span className="b360-stat-lbl">Lines</span>
             </div>
             <div className="b360-stat">
-              <span className="b360-stat-val" style={{color:'#4ade80'}}>{games.filter(g => g.status !== 'final').length||'—'}</span>
+              <span className="b360-stat-val" style={{color:'#4ade80'}}>{games.length||'—'}</span>
               <span className="b360-stat-lbl">Games</span>
             </div>
           </div>
@@ -515,7 +515,7 @@ export default function Betz360() {
                   onClick={() => setTab(t)}
                 >
                   {labels[t]}
-                  {t==='games'&&games.filter(g=>g.status!=='final').length>0&&<span className="b360-chip b360-chip-green">{games.filter(g=>g.status!=='final').length}</span>}
+                  {t==='games'&&games.length>0&&<span className="b360-chip b360-chip-green">{games.length}</span>}
                   {t==='parlays'&&allProps.length>0&&<span className="b360-chip b360-chip-blue">{allProps.length}</span>}
                 </button>
               );
