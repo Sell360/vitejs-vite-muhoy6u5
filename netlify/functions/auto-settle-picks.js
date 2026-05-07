@@ -105,15 +105,79 @@ function normalize(s) {
   return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ESPN team names sometimes differ from Odds API. Match by last word(s) of team name.
-function teamMatches(odds, espn) {
+// Bets store matchups as 3-letter abbreviations (TOR @ TB) but ESPN returns
+// full team names (Toronto Blue Jays). Nested by sport so shared codes
+// (BOS, CHI, NY) don't collide between leagues.
+const TEAM_ABBR = {
+  mlb: {
+    ARI: 'diamondbacks', ATH: 'athletics', ATL: 'braves', BAL: 'orioles',
+    BOS: 'red sox', CHC: 'cubs', CHW: 'white sox', CIN: 'reds',
+    CLE: 'guardians', COL: 'rockies', DET: 'tigers', HOU: 'astros',
+    KC: 'royals', KCR: 'royals', LAA: 'angels', LAD: 'dodgers',
+    MIA: 'marlins', MIL: 'brewers', MIN: 'twins', NYM: 'mets',
+    NYY: 'yankees', OAK: 'athletics', PHI: 'phillies', PIT: 'pirates',
+    SD: 'padres', SDP: 'padres', SEA: 'mariners', SF: 'giants',
+    SFG: 'giants', STL: 'cardinals', TB: 'rays', TBR: 'rays',
+    TEX: 'rangers', TOR: 'blue jays', WSH: 'nationals', WAS: 'nationals',
+  },
+  nba: {
+    ATL: 'hawks', BOS: 'celtics', BKN: 'nets', BRK: 'nets',
+    CHA: 'hornets', CHO: 'hornets', CHI: 'bulls', CLE: 'cavaliers',
+    DAL: 'mavericks', DEN: 'nuggets', DET: 'pistons', GSW: 'warriors',
+    GS: 'warriors', HOU: 'rockets', IND: 'pacers', LAC: 'clippers',
+    LAL: 'lakers', MEM: 'grizzlies', MIA: 'heat', MIL: 'bucks',
+    MIN: 'timberwolves', NOP: 'pelicans', NO: 'pelicans', NYK: 'knicks',
+    NY: 'knicks', OKC: 'thunder', ORL: 'magic', PHI: '76ers',
+    PHX: 'suns', POR: 'trail blazers', SAC: 'kings', SAS: 'spurs',
+    SA: 'spurs', TOR: 'raptors', UTA: 'jazz', WAS: 'wizards', WSH: 'wizards',
+  },
+  nfl: {
+    ARI: 'cardinals', ATL: 'falcons', BAL: 'ravens', BUF: 'bills',
+    CAR: 'panthers', CHI: 'bears', CIN: 'bengals', CLE: 'browns',
+    DAL: 'cowboys', DEN: 'broncos', DET: 'lions', GB: 'packers',
+    GBP: 'packers', HOU: 'texans', IND: 'colts', JAX: 'jaguars',
+    JAC: 'jaguars', KC: 'chiefs', LAC: 'chargers', LAR: 'rams',
+    LV: 'raiders', LVR: 'raiders', MIA: 'dolphins', MIN: 'vikings',
+    NE: 'patriots', NEP: 'patriots', NO: 'saints', NOS: 'saints',
+    NYG: 'giants', NYJ: 'jets', PHI: 'eagles', PIT: 'steelers',
+    SEA: 'seahawks', SF: '49ers', TB: 'buccaneers', TEN: 'titans',
+    WSH: 'commanders', WAS: 'commanders',
+  },
+  nhl: {
+    ANA: 'ducks', BOS: 'bruins', BUF: 'sabres', CGY: 'flames',
+    CAR: 'hurricanes', CHI: 'blackhawks', COL: 'avalanche',
+    CBJ: 'blue jackets', DAL: 'stars', DET: 'red wings',
+    EDM: 'oilers', FLA: 'panthers', LAK: 'kings', LA: 'kings',
+    MIN: 'wild', MTL: 'canadiens', NSH: 'predators',
+    NJD: 'devils', NJ: 'devils', NYI: 'islanders', NYR: 'rangers',
+    OTT: 'senators', PHI: 'flyers', PIT: 'penguins',
+    SJ: 'sharks', SJS: 'sharks', SEA: 'kraken', STL: 'blues',
+    TBL: 'lightning', TB: 'lightning', TOR: 'maple leafs',
+    UTA: 'utah', VAN: 'canucks', VGK: 'golden knights', WSH: 'capitals',
+    WPG: 'jets',
+  },
+  wnba: {
+    ATL: 'dream', CHI: 'sky', CON: 'sun', DAL: 'wings',
+    IND: 'fever', LV: 'aces', LVA: 'aces', LA: 'sparks',
+    MIN: 'lynx', NY: 'liberty', NYL: 'liberty', PHX: 'mercury',
+    SEA: 'storm', WAS: 'mystics', WSH: 'mystics',
+  },
+};
+
+function teamMatches(odds, espn, sport) {
   const o = normalize(odds);
   const e = normalize(espn);
+  if (!o || !e) return false;
   if (o === e) return true;
-  // Match by last word (Yankees, Lakers, etc.)
-  const oLast = o.split(' ').pop();
-  const eLast = e.split(' ').pop();
-  if (oLast && eLast && oLast === eLast) return true;
+  if (o.length >= 3 && e.includes(o)) return true;
+  if (e.length >= 3 && o.includes(e)) return true;
+  const oLast = o.split(' ').slice(-2).join(' ');
+  const eLast = e.split(' ').slice(-2).join(' ');
+  if (oLast && eLast && (eLast.includes(oLast) || oLast.includes(eLast))) return true;
+  const upperOdds = String(odds).toUpperCase().trim();
+  const sportMap = TEAM_ABBR[sport?.toLowerCase?.()] || {};
+  const mapped = sportMap[upperOdds];
+  if (mapped && e.includes(mapped)) return true;
   return false;
 }
 
@@ -136,7 +200,7 @@ async function findEspnGameId(sport, awayTeam, homeTeam, gameDate) {
     const homeName = home.team?.displayName || home.team?.name || '';
     const awayName = away.team?.displayName || away.team?.name || '';
 
-    if (teamMatches(homeTeam, homeName) && teamMatches(awayTeam, awayName)) {
+    if (teamMatches(homeTeam, homeName, sport) && teamMatches(awayTeam, awayName, sport)) {
       return { id: ev.id, completed: ev.status?.type?.completed === true };
     }
   }
