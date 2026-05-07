@@ -58,15 +58,46 @@ function fetchJSON(url, headers) {
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Content-Type': 'application/json',
   };
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
+
+  // Health-check endpoint — GET /api/stripe-checkout shows config status
+  // This lets us debug without running through the full UI flow
+  if (event.httpMethod === 'GET') {
+    return {
+      statusCode: 200, headers,
+      body: JSON.stringify({
+        ok: true,
+        config: {
+          hasSecretKey: !!STRIPE_SECRET,
+          secretKeyPrefix: STRIPE_SECRET ? STRIPE_SECRET.slice(0, 8) : null,
+          hasMonthlyPrice: !!PRICE_MONTHLY,
+          monthlyPricePrefix: PRICE_MONTHLY ? PRICE_MONTHLY.slice(0, 12) : null,
+          hasAnnualPrice: !!PRICE_ANNUAL,
+          annualPricePrefix: PRICE_ANNUAL ? PRICE_ANNUAL.slice(0, 12) : null,
+          hasSupabaseServiceKey: !!SUPA_SERVICE_KEY,
+        },
+      }),
+    };
+  }
+
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'POST only' }) };
 
   if (!STRIPE_SECRET || !PRICE_MONTHLY || !PRICE_ANNUAL) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Stripe not configured' }) };
+    return {
+      statusCode: 500, headers,
+      body: JSON.stringify({
+        error: 'Stripe not configured',
+        details: {
+          hasSecretKey: !!STRIPE_SECRET,
+          hasMonthlyPrice: !!PRICE_MONTHLY,
+          hasAnnualPrice: !!PRICE_ANNUAL,
+        },
+      }),
+    };
   }
 
   let body;
@@ -102,6 +133,10 @@ exports.handler = async (event) => {
     'cancel_url': `${baseUrl}/?subscribed=0`,
     'subscription_data[trial_period_days]': '3',
     'subscription_data[metadata][user_id]': userId,
+    // Require a card upfront — without this, trials can be started without
+    // payment info and users get free access then disappear at trial end.
+    'subscription_data[trial_settings][end_behavior][missing_payment_method]': 'cancel',
+    'payment_method_collection': 'always',
     'metadata[user_id]': userId,
     'allow_promotion_codes': 'true',
     'billing_address_collection': 'auto',
@@ -115,7 +150,16 @@ exports.handler = async (event) => {
   try {
     const { status, data } = await stripeRequest('/v1/checkout/sessions', params);
     if (status !== 200) {
-      return { statusCode: 500, headers, body: JSON.stringify({ error: data.error?.message || 'stripe error' }) };
+      return {
+        statusCode: 500, headers,
+        body: JSON.stringify({
+          error: data.error?.message || 'stripe error',
+          stripeErrorType: data.error?.type,
+          stripeErrorCode: data.error?.code,
+          stripeErrorParam: data.error?.param,
+          httpStatus: status,
+        }),
+      };
     }
     return { statusCode: 200, headers, body: JSON.stringify({ url: data.url, sessionId: data.id }) };
   } catch (err) {

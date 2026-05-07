@@ -96,7 +96,13 @@ export function UpgradeModal({ open, onClose }: { open: boolean; onClose: () => 
       if (data.url) {
         window.location.href = data.url;
       } else {
-        setError(data.error || 'Could not start checkout');
+        // Surface the actual Stripe error so it's debuggable from the UI
+        const detail = data.stripeErrorCode
+          ? ` (${data.stripeErrorCode}${data.stripeErrorParam ? ` · ${data.stripeErrorParam}` : ''})`
+          : data.details
+          ? ` — Missing: ${Object.entries(data.details).filter(([, v]) => !v).map(([k]) => k).join(', ')}`
+          : '';
+        setError((data.error || 'Could not start checkout') + detail);
         setBusy(false);
       }
     } catch (err) {
