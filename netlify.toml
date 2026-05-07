@@ -17,6 +17,9 @@
 [functions."auto-settle-picks"]
   schedule = "30 */2 * * *"
 
+[functions."auto-settle-mock-bets"]
+  schedule = "45 */2 * * *"
+
 [dev]
   command = "npm run dev"
   port = 5173
