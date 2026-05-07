@@ -344,10 +344,21 @@ async function settleAndUpdateBankroll(bet, status) {
   }
 }
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
   if (!SUPA_URL || !SUPA_SERVICE_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+    return { statusCode: 500, headers, body: JSON.stringify({
+      error: 'Missing env vars',
+      hasSupaUrl: !!SUPA_URL,
+      hasSupaServiceKey: !!SUPA_SERVICE_KEY,
+    }) };
   }
+
+  // Allow GET for manual triggering and debug
+  // Browser users can hit https://betz360.com/api/auto-settle-mock-bets
+  // to manually run the settler and see exactly what happened to each bet.
+  const isManualRun = event && (event.httpMethod === 'GET' || event.httpMethod === 'POST');
 
   // Pull pending mock bets where game has had time to finish (started 2+ hours ago)
   // Limit lookback to 14 days to avoid touching stale rows forever
@@ -437,8 +448,20 @@ exports.handler = async () => {
       } else {
         // Single-leg bet (ML / SPREAD / TOTAL / PROP)
         const game = await getGameData(bet.sport, bet.matchup, bet.game_time);
-        if (!game || !game.completed) {
-          results.stillPending.push({ id: bet.id, reason: 'game not yet complete' });
+        if (!game) {
+          results.stillPending.push({
+            id: bet.id, matchup: bet.matchup, sport: bet.sport, gameTime: bet.game_time,
+            reason: 'no ESPN game found matching this matchup',
+          });
+          continue;
+        }
+        if (!game.completed) {
+          results.stillPending.push({
+            id: bet.id, matchup: bet.matchup, sport: bet.sport,
+            espnGameId: game.id, espnHome: game.homeName, espnAway: game.awayName,
+            espnHomeScore: game.homeScore, espnAwayScore: game.awayScore,
+            reason: 'game not yet complete per ESPN',
+          });
           continue;
         }
         let box = null;
@@ -457,13 +480,23 @@ exports.handler = async () => {
           game, box, propType, playerName, bet.sport,
         );
         if (!finalStatus) {
-          results.stillPending.push({ id: bet.id, reason: 'unable to grade — likely missing player stat' });
+          results.stillPending.push({
+            id: bet.id, betType: bet.bet_type, matchup: bet.matchup,
+            pickLabel: bet.pick_label, line: bet.line, side: bet.pick_side,
+            playerName, propType,
+            espnHomeScore: game.homeScore, espnAwayScore: game.awayScore,
+            reason: bet.bet_type === 'PROP'
+              ? `couldn't find player stat (player='${playerName}' propType='${propType}')`
+              : `gradeBet returned null — check side/line`,
+          });
           continue;
         }
       }
 
       await settleAndUpdateBankroll(bet, finalStatus);
-      results.settled.push({ id: bet.id, status: finalStatus });
+      results.settled.push({
+        id: bet.id, betType: bet.bet_type, pickLabel: bet.pick_label, status: finalStatus,
+      });
     } catch (e) {
       results.errors.push({ id: bet.id, error: String(e) });
     }
