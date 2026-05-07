@@ -3,7 +3,8 @@ import { apiService } from '../services/api';
 import type { Sport, PlayerProp } from '../services/api';
 import { AIScanner } from './AIScanner';
 import { CorrelationStacker } from './CorrelationStacker';
-import { wouldExceedUnderdogCap, MAX_UNDERDOGS_PER_PARLAY } from '../services/mockBets';
+import { wouldExceedUnderdogCap, MAX_UNDERDOGS_PER_PARLAY, logBet } from '../services/mockBets';
+import { useAuth } from '../contexts/AuthContext';
 import { ParlayShareCard } from './ParlayShareCard';
 import { PublicBetting } from './PublicBetting';
 
@@ -96,6 +97,9 @@ export function CrossSportParlay() {
   const [underdogWarning, setUnderdogWarning] = useState('');
   const [mode, setMode] = useState<'builder' | 'pick6'>('builder');
   const [stake, setStake] = useState('25');
+  const { user } = useAuth();
+  const [logged, setLogged] = useState(false);
+  const [logBusy, setLogBusy] = useState(false);
 
   useEffect(() => {
     setViewFilter('all');
@@ -498,6 +502,68 @@ export function CrossSportParlay() {
                 <a href="https://sportsbook.draftkings.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '7px', background: 'rgba(74,222,128,.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,.25)', borderRadius: 7, fontSize: 11, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>🏈 DraftKings</a>
                 <a href="https://app.prizepicks.com" target="_blank" rel="noopener noreferrer" style={{ flex: 1, padding: '7px', background: 'rgba(129,140,248,.1)', color: '#818cf8', border: '1px solid rgba(129,140,248,.25)', borderRadius: 7, fontSize: 11, fontWeight: 800, textDecoration: 'none', textAlign: 'center', fontFamily: "'Barlow', sans-serif" }}>🎯 PrizePicks</a>
               </div>
+              {user && (
+                <button
+                  onClick={async () => {
+                    if (logBusy || legs.length === 0 || stakeNum <= 0) return;
+                    setLogBusy(true);
+                    try {
+                      const matchupSummary = legs
+                        .map(l => `${l.prop.playerName} ${l.pick.toUpperCase()} ${l.prop.line} ${l.prop.propType}`)
+                        .join(' + ');
+                      const earliestStart = legs.reduce((earliest, leg) => {
+                        const t = leg.prop.startTime || '';
+                        return (!earliest || (t && t < earliest)) ? (t || earliest) : earliest;
+                      }, '' as string);
+                      await logBet({
+                        user_id: user.id,
+                        sport: legs[0].sport,
+                        event_id: null,
+                        game_time: earliestStart || new Date().toISOString(),
+                        matchup: legs.length > 1 ? `${legs.length}-leg multi-sport parlay` : `${legs[0].prop.awayTeam} @ ${legs[0].prop.homeTeam}`,
+                        bet_type: legs.length > 1 ? 'PARLAY' : 'PROP',
+                        pick_label: legs.length > 1 ? matchupSummary : `${legs[0].prop.playerName} ${legs[0].pick} ${legs[0].prop.line} ${legs[0].prop.propType}`,
+                        pick_side: legs.length > 1 ? null : legs[0].pick,
+                        line: legs.length > 1 ? null : legs[0].prop.line,
+                        odds: combinedOdds,
+                        stake: stakeNum,
+                        legs: legs.length > 1 ? legs.map(l => ({
+                          sport: l.sport,
+                          gameId: l.prop.gameId,
+                          matchup: `${l.prop.awayTeam} @ ${l.prop.homeTeam}`,
+                          gameTime: l.prop.startTime || null,
+                          betType: 'PROP' as const,
+                          side: l.pick,
+                          line: l.prop.line,
+                          label: `${l.prop.playerName} ${l.pick} ${l.prop.line} ${l.prop.propType}`,
+                          odds: l.odds,
+                          player: l.prop.playerName,
+                          propType: l.prop.propType,
+                        })) : null,
+                        status: 'pending',
+                      });
+                      setLogged(true);
+                      setTimeout(() => { setLogged(false); setLegs([]); }, 1800);
+                    } catch (e) {
+                      console.error('logBet failed', e);
+                    } finally {
+                      setLogBusy(false);
+                    }
+                  }}
+                  disabled={logBusy || stakeNum <= 0}
+                  style={{
+                    width: '100%', padding: '9px',
+                    background: logged ? 'rgba(74,222,128,.2)' : 'linear-gradient(135deg, rgba(56,189,248,.18), rgba(56,189,248,.08))',
+                    color: logged ? '#4ade80' : '#38bdf8',
+                    border: `1px solid ${logged ? 'rgba(74,222,128,.4)' : 'rgba(56,189,248,.3)'}`,
+                    borderRadius: 7, fontSize: 12, fontWeight: 800,
+                    cursor: logBusy ? 'wait' : 'pointer',
+                    marginBottom: 8, fontFamily: "'Barlow', sans-serif",
+                  }}
+                >
+                  {logged ? '✓ Logged to tracker!' : logBusy ? 'Logging…' : `📊 Log as ${legs.length > 1 ? legs.length + '-leg parlay' : 'mock bet'} ($${stakeNum.toFixed(0)})`}
+                </button>
+              )}
               <div style={{ marginBottom: 8 }}>
                 <ParlayShareCard
                   legs={legs.map(l => ({ label: l.prop.playerName + ' ' + l.pick.toUpperCase() + ' ' + l.prop.line, matchup: l.prop.awayTeam + ' @ ' + l.prop.homeTeam, betType: l.prop.propType, odds: l.odds, sport: l.sport }))}

@@ -6,6 +6,8 @@ import type { ReversalSignal } from '../services/lineMovement';
 import { CorrelationStacker } from './CorrelationStacker';
 import type { PlayerProp, GameData, WNBAGameData, Sport } from '../services/api';
 import { getEdgeContext, applyEdgeContext } from '../services/edgeSignals';
+import { useAuth } from '../contexts/AuthContext';
+import { logBet } from '../services/mockBets';
 
 interface ParlayLeg {
   prop: PlayerProp & {
@@ -615,6 +617,7 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
                       fontSize: 11, fontWeight: 800, textDecoration: 'none', whiteSpace: 'nowrap',
                       fontFamily: "'Barlow', sans-serif",
                     }}>🎯 PrizePicks</a>
+                    <LogParlayButton parlay={parlay} games={games} />
                   <div style={{ marginTop: 8 }}>
                     <ParlayShareCard
                       legs={parlay.legs.map(leg => ({
@@ -659,4 +662,138 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
 export function buildDKDeepLink(legs: { playerName: string; propType: string; line: number; pick: string }[]): string {
   const query = encodeURIComponent(legs[0]?.playerName || 'props');
   return `https://sportsbook.draftkings.com/search?q=${query}`;
+}
+
+// ── LOG PARLAY BUTTON ─────────────────────────────────────────────────────
+// Adds a "Log this parlay" button to each parlay card. Logs as a single
+// PARLAY mock bet with all legs in the legs JSONB so the auto-settler can
+// grade each leg via ESPN box scores after games end.
+function LogParlayButton({ parlay, games }: { parlay: Parlay; games: (GameData | WNBAGameData)[] }) {
+  const { user } = useAuth();
+  const [logged, setLogged] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [stake, setStake] = useState(25);
+  const [open, setOpen] = useState(false);
+
+  if (!user) return null;
+
+  const handleLog = async () => {
+    setBusy(true);
+    try {
+      // Find earliest start time across all legs
+      const earliestStart = parlay.legs.reduce((earliest, leg) => {
+        const g = games.find(gm => gm.id === leg.prop.gameId);
+        const t = g?.startTime;
+        return (!earliest || (t && t < earliest)) ? (t || earliest) : earliest;
+      }, '' as string);
+
+      const matchupSummary = parlay.legs
+        .map(l => `${l.prop.playerName} ${l.pick.toUpperCase()} ${l.prop.line} ${l.prop.propType}`)
+        .join(' + ');
+
+      await logBet({
+        user_id: user.id,
+        sport: parlay.sport,
+        event_id: null,
+        game_time: earliestStart || new Date().toISOString(),
+        matchup: `${parlay.legs.length}-leg parlay`,
+        bet_type: 'PARLAY',
+        pick_label: matchupSummary,
+        pick_side: null,
+        line: null,
+        odds: parlay.combinedOdds,
+        stake,
+        legs: parlay.legs.map(leg => {
+          const g = games.find(gm => gm.id === leg.prop.gameId);
+          return {
+            sport: parlay.sport,
+            gameId: leg.prop.gameId,
+            matchup: `${leg.prop.awayTeam || ''} @ ${leg.prop.homeTeam || ''}`,
+            gameTime: g?.startTime || null,
+            betType: 'PROP' as const,
+            side: leg.pick,
+            line: leg.prop.line,
+            label: `${leg.prop.playerName} ${leg.pick} ${leg.prop.line} ${leg.prop.propType}`,
+            odds: leg.odds,
+            player: leg.prop.playerName,
+            propType: leg.prop.propType,
+          };
+        }),
+        status: 'pending',
+      });
+      setLogged(true);
+      setTimeout(() => { setLogged(false); setOpen(false); }, 2200);
+    } catch (e) {
+      console.error('logBet failed', e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (logged) {
+    return (
+      <span style={{
+        padding: '6px 13px', background: 'rgba(74,222,128,.15)', color: '#4ade80',
+        border: '1px solid rgba(74,222,128,.4)', borderRadius: 7,
+        fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap',
+        fontFamily: "'Barlow', sans-serif",
+      }}>✓ Logged to tracker</span>
+    );
+  }
+
+  if (open) {
+    return (
+      <span style={{
+        display: 'inline-flex', gap: 5, alignItems: 'center',
+        padding: '4px 8px',
+        background: 'rgba(56,189,248,.1)', borderRadius: 7,
+        border: '1px solid rgba(56,189,248,.25)',
+      }}>
+        <span style={{ fontSize: 10, color: '#1a3060', fontWeight: 700, letterSpacing: .3 }}>$</span>
+        <input
+          type="number"
+          min="1" max="10000"
+          value={stake}
+          onChange={e => setStake(Math.max(1, Number(e.target.value) || 1))}
+          style={{
+            width: 50, padding: '2px 4px',
+            background: 'rgba(0,0,0,.25)', color: '#c8ddf0',
+            border: '1px solid rgba(56,189,248,.25)', borderRadius: 4,
+            fontSize: 11, fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif",
+            textAlign: 'center',
+          }}
+        />
+        <button
+          onClick={handleLog}
+          disabled={busy}
+          style={{
+            padding: '4px 8px', background: '#38bdf8', color: '#050810',
+            border: 'none', borderRadius: 4,
+            fontSize: 10, fontWeight: 900, cursor: busy ? 'wait' : 'pointer',
+            fontFamily: "'Barlow', sans-serif",
+          }}
+        >{busy ? '…' : 'Log'}</button>
+        <button
+          onClick={() => setOpen(false)}
+          style={{
+            padding: '4px 6px', background: 'transparent', color: '#1a3060',
+            border: 'none', cursor: 'pointer',
+            fontSize: 10, fontWeight: 800, fontFamily: "'Barlow', sans-serif",
+          }}
+        >×</button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setOpen(true)}
+      style={{
+        padding: '6px 13px', background: 'rgba(56,189,248,.1)', color: '#38bdf8',
+        border: '1px solid rgba(56,189,248,.25)', borderRadius: 7,
+        fontSize: 11, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+        fontFamily: "'Barlow', sans-serif",
+      }}
+    >📊 Log Parlay</button>
+  );
 }
