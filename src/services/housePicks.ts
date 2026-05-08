@@ -179,3 +179,32 @@ export async function settleHousePick(
     .eq('id', id);
   return { error: error?.message ?? null };
 }
+
+// Manually grade a pick by providing the actual stat for each leg.
+// Computes parlay outcome by parlay rules:
+//   any leg lost = parlay lost
+//   all legs won (pushes drop out) = parlay won
+//   all pushes = push
+export async function manualGradeLegs(
+  pick: HousePick,
+  actualStats: number[],
+): Promise<{ error: string | null }> {
+  if (actualStats.length !== pick.legs.length) {
+    return { error: 'Wrong number of stats provided' };
+  }
+  let wonCount = 0, lostCount = 0, pushCount = 0;
+  for (let i = 0; i < pick.legs.length; i++) {
+    const leg = pick.legs[i];
+    const actual = actualStats[i];
+    if (actual === leg.line) pushCount++;
+    else if (leg.pick === 'over' && actual > leg.line) wonCount++;
+    else if (leg.pick === 'over' && actual < leg.line) lostCount++;
+    else if (leg.pick === 'under' && actual < leg.line) wonCount++;
+    else if (leg.pick === 'under' && actual > leg.line) lostCount++;
+  }
+  let finalStatus: 'won' | 'lost' | 'push';
+  if (lostCount > 0) finalStatus = 'lost';
+  else if (wonCount === 0) finalStatus = 'push';
+  else finalStatus = 'won';
+  return settleHousePick(pick.id, finalStatus, wonCount, lostCount, pushCount);
+}

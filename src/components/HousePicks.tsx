@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { getHousePicks, computeTrackRecord, settleHousePick, type HousePick, type TrackRecord } from '../services/housePicks';
+import { getHousePicks, computeTrackRecord, settleHousePick, manualGradeLegs, type HousePick, type TrackRecord } from '../services/housePicks';
 
 const SPORT_LABELS: Record<string, string> = {
   mlb: 'MLB', nba: 'NBA', nfl: 'NFL', nhl: 'NHL', wnba: 'WNBA', ncaaf: 'CFB',
@@ -161,9 +161,33 @@ function Stat({ label, value, color }: { label: string; value: string; color: st
 
 function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boolean; onSettle: (id: string, status: 'won' | 'lost' | 'push') => void; }) {
   const [open, setOpen] = useState(false);
+  const [gradeOpen, setGradeOpen] = useState(false);
+  const [actuals, setActuals] = useState<string[]>(pick.legs.map(() => ''));
+  const [gradeBusy, setGradeBusy] = useState(false);
+  const [gradeError, setGradeError] = useState<string | null>(null);
   const statusColor = pick.status === 'won' ? '#4ade80' : pick.status === 'lost' ? '#f87171' : pick.status === 'push' ? '#fbbf24' : pick.status === 'pending_review' ? '#a855f7' : '#64748b';
   const tierColor = pick.tier === 'S' ? '#4ade80' : pick.tier === 'A' ? '#fbbf24' : '#94a3b8';
   const dateLabel = new Date(pick.pick_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const handleManualGrade = async () => {
+    setGradeError(null);
+    const nums = actuals.map(a => parseFloat(a));
+    if (nums.some(n => isNaN(n))) {
+      setGradeError('Enter a number for every leg');
+      return;
+    }
+    setGradeBusy(true);
+    const { error } = await manualGradeLegs(pick, nums);
+    setGradeBusy(false);
+    if (error) {
+      setGradeError(error);
+      return;
+    }
+    setGradeOpen(false);
+    // Force a page-level refresh by triggering the parent's settle hook
+    // (any non-null status works; the page reloads picks after settle)
+    onSettle(pick.id, 'won');
+  };
 
   return (
     <div style={{
@@ -228,12 +252,66 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
           ))}
 
           {/* Admin settlement controls */}
-          {isAdmin && (pick.status === 'pending' || pick.status === 'pending_review') && (
-            <div style={{ display: 'flex', gap: 6, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.05)' }}>
+          {isAdmin && (pick.status === 'pending' || pick.status === 'pending_review') && !gradeOpen && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.05)', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, alignSelf: 'center' }}>ADMIN:</span>
+              <button onClick={() => setGradeOpen(true)} style={settleBtn('#a855f7')}>📝 Grade Manually</button>
               <button onClick={() => onSettle(pick.id, 'won')} style={settleBtn('#4ade80')}>✓ Won</button>
               <button onClick={() => onSettle(pick.id, 'lost')} style={settleBtn('#f87171')}>✗ Lost</button>
               <button onClick={() => onSettle(pick.id, 'push')} style={settleBtn('#fbbf24')}>= Push</button>
+            </div>
+          )}
+
+          {/* Manual-grade dialog: enter actual stat for each leg */}
+          {isAdmin && gradeOpen && (
+            <div style={{
+              marginTop: 10, paddingTop: 10,
+              borderTop: '1px solid rgba(168,85,247,.2)',
+              background: 'rgba(168,85,247,.04)',
+              borderRadius: 6, padding: '10px 12px',
+            }}>
+              <div style={{ fontSize: 10, color: '#a855f7', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 }}>
+                Enter Actual Stat For Each Leg
+              </div>
+              {pick.legs.map((l, i) => (
+                <div key={i} style={{
+                  display: 'flex', gap: 8, alignItems: 'center',
+                  padding: '6px 0',
+                  borderBottom: i < pick.legs.length - 1 ? '1px solid rgba(168,85,247,.1)' : 'none',
+                }}>
+                  <span style={{ fontSize: 10, color: '#1e3a60', fontWeight: 700, minWidth: 18 }}>#{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 11, color: '#c8ddf0', fontWeight: 600, minWidth: 0 }}>
+                    {l.player} {l.pick.toUpperCase()} {l.line} {l.propType}
+                  </span>
+                  <input
+                    type="number" step="0.5"
+                    value={actuals[i]}
+                    onChange={e => setActuals(prev => prev.map((v, idx) => idx === i ? e.target.value : v))}
+                    placeholder="actual"
+                    style={{
+                      width: 70, padding: '4px 8px',
+                      background: 'rgba(0,0,0,.3)', color: '#c8ddf0',
+                      border: '1px solid rgba(168,85,247,.3)', borderRadius: 5,
+                      fontSize: 12, fontWeight: 700,
+                      fontFamily: "'Barlow Condensed', sans-serif",
+                      textAlign: 'center',
+                    }}
+                  />
+                </div>
+              ))}
+              {gradeError && (
+                <div style={{ marginTop: 8, fontSize: 11, color: '#f87171', fontWeight: 700 }}>
+                  {gradeError}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                <button onClick={handleManualGrade} disabled={gradeBusy} style={{
+                  ...settleBtn('#a855f7'),
+                  background: 'rgba(168,85,247,.15)',
+                  cursor: gradeBusy ? 'wait' : 'pointer',
+                }}>{gradeBusy ? '…grading' : 'Apply Grades'}</button>
+                <button onClick={() => { setGradeOpen(false); setGradeError(null); }} style={settleBtn('#64748b')}>Cancel</button>
+              </div>
             </div>
           )}
         </div>

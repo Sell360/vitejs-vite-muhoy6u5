@@ -225,13 +225,19 @@ function getPlayerStat(boxscore, sport, propType, playerName) {
   const extractor = STAT_EXTRACTORS[sport]?.[propType.toLowerCase()];
   if (!extractor) return null;
 
-  const targetName = normalize(playerName);
+  const targetNorm = normalize(playerName);
+  const targetLast = targetNorm.split(' ').pop() || '';
+  const targetFirstInitial = (targetNorm.split(' ')[0] || '')[0] || '';
+
+  // Track whether we found ANY athlete stats at all — if box score has data
+  // for other players but not ours, and the game is final, that's a DNP.
+  let boxHasStats = false;
+  let foundExactMatch = null;
+  let foundLastNameMatch = null;
 
   for (const teamGroup of playersByTeam) {
     const statGroups = teamGroup.statistics || [];
     for (const sg of statGroups) {
-      // sg.name might be 'batting', 'pitching', 'passing', 'rushing', 'receiving', or 'main' (NBA/NHL/WNBA)
-      // For sports without group differentiation (NBA), use the first/only group
       const sgName = (sg.name || sg.type || 'main').toLowerCase();
       if (extractor.group !== 'main' && sgName !== extractor.group) continue;
 
@@ -241,16 +247,41 @@ function getPlayerStat(boxscore, sport, propType, playerName) {
 
       for (const ath of sg.athletes || []) {
         const athleteName = ath.athlete?.displayName || ath.athlete?.fullName || '';
-        if (normalize(athleteName) !== targetName && !normalize(athleteName).includes(targetName) && !targetName.includes(normalize(athleteName))) continue;
-
+        const athNorm = normalize(athleteName);
+        if (!athNorm) continue;
         const raw = (ath.stats || [])[keyIdx];
         if (raw === undefined || raw === null) continue;
-        const num = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
-        if (isNaN(num)) continue;
-        return num;
+        boxHasStats = true; // someone has stats for this stat type
+
+        // Exact normalized match wins
+        if (athNorm === targetNorm) {
+          const num = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
+          if (!isNaN(num)) foundExactMatch = num;
+        }
+        // Last name match with first initial as tiebreak — handles
+        // 'AJ Brown' / 'A.J. Brown', 'Mike Trout' / 'Michael Trout'
+        else if (foundLastNameMatch === null) {
+          const athLast = athNorm.split(' ').pop() || '';
+          const athFirstInitial = (athNorm.split(' ')[0] || '')[0] || '';
+          if (athLast && athLast === targetLast && athFirstInitial === targetFirstInitial) {
+            const num = parseFloat(String(raw).replace(/[^0-9.-]/g, ''));
+            if (!isNaN(num)) foundLastNameMatch = num;
+          }
+        }
       }
     }
   }
+
+  if (foundExactMatch !== null) return foundExactMatch;
+  if (foundLastNameMatch !== null) return foundLastNameMatch;
+
+  // DNP detection: if game is final AND the box score has stats for other
+  // athletes (so the data is actually loaded) but our player is absent,
+  // they didn't play. Treat as 0 — under bets win, over bets lose.
+  const gameFinal = boxscore?.header?.competitions?.[0]?.status?.type?.completed === true
+    || boxscore?.header?.competitions?.[0]?.status?.type?.name?.toLowerCase().includes('final');
+  if (gameFinal && boxHasStats) return 0;
+
   return null;
 }
 
