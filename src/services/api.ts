@@ -57,6 +57,12 @@ export interface GameLine {
   awaySpread: number | null; awaySpreadOdds: number | null;
   total: number | null; overOdds: number | null; underOdds: number | null;
   vendor: string;
+  // Soccer-specific (optional). 3-way moneylines have a Draw outcome alongside
+  // home/away. Existing sports leave drawML undefined.
+  drawML?: number | null;
+  // For multi-league sports (only soccer right now). Lets the UI group/filter
+  // by league. Undefined for single-league sports.
+  league?: string;
 }
 
 export interface AltLinePoint { point: number; price: number; }

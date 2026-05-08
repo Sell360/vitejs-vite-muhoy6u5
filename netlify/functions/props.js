@@ -68,6 +68,17 @@ exports.handler = async (event) => {
     ufc:  'mma_mixed_martial_arts',
   };
 
+  // Soccer is multi-league. Each league has its own Odds API sport key,
+  // and we fetch all 5 leagues and merge results when sport==='soccer'.
+  // Order here = order results appear in.
+  const SOCCER_LEAGUES = [
+    { key: 'soccer_epl',                       league: 'epl',         label: 'Premier League' },
+    { key: 'soccer_spain_la_liga',             league: 'laliga',      label: 'La Liga' },
+    { key: 'soccer_uefa_champs_league',        league: 'ucl',         label: 'Champions League' },
+    { key: 'soccer_italy_serie_a',             league: 'seriea',      label: 'Serie A' },
+    { key: 'soccer_germany_bundesliga',        league: 'bundesliga',  label: 'Bundesliga' },
+  ];
+
   const PROP_MARKETS = {
     ncaaf: 'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions',
     mlb:  'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis,batter_home_runs',
@@ -79,7 +90,10 @@ exports.handler = async (event) => {
   };
 
   const oddsSport = SPORT_MAP[sport];
-  if (!oddsSport) return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+  // Soccer skips the singular SPORT_MAP check because it uses SOCCER_LEAGUES
+  if (sport !== 'soccer' && !oddsSport) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `Invalid sport: ${sport}` }) };
+  }
 
   // Cache key includes date — auto-expires daily
   const today = new Date().toISOString().split('T')[0];
@@ -113,6 +127,85 @@ exports.handler = async (event) => {
   });
 
   try {
+    // ── SOCCER MULTI-LEAGUE BRANCH ─────────────────────────────────────────
+    // Soccer fetches games from 5 leagues and merges them. Each league call
+    // is ~1 credit so the full soccer game-lines fetch costs ~5 credits per
+    // refresh. Cache TTL is the same 60min as other sports.
+    if (sport === 'soccer' && type === 'games') {
+      const allGames = [];
+      const leagueErrors = [];
+
+      // Fan out league calls in parallel for speed
+      const results = await Promise.allSettled(
+        SOCCER_LEAGUES.map(({ key, league, label }) =>
+          get(`https://api.the-odds-api.com/v4/sports/${key}/odds?apiKey=${ODDS_KEY}&regions=us,uk,eu&markets=h2h,totals&oddsFormat=american`)
+            .then(r => ({ league, label, key, response: r }))
+        )
+      );
+
+      for (const settled of results) {
+        if (settled.status === 'rejected') {
+          leagueErrors.push({ error: String(settled.reason) });
+          continue;
+        }
+        const { league, label, response } = settled.value;
+        if (response.status !== 200) {
+          // Common case: a league might be in offseason. Don't error the whole
+          // soccer fetch — just skip that league.
+          leagueErrors.push({ league, status: response.status });
+          continue;
+        }
+
+        const leagueGames = (Array.isArray(response.data) ? response.data : []).map(game => {
+          const book = game.bookmakers?.find(b => b.key === 'draftkings')
+            || game.bookmakers?.find(b => b.key === 'fanduel')
+            || game.bookmakers?.find(b => b.key === 'pinnacle')
+            || game.bookmakers?.[0];
+          const h2h   = book?.markets?.find(m => m.key === 'h2h');
+          const total = book?.markets?.find(m => m.key === 'totals');
+
+          // Soccer h2h has THREE outcomes: home, away, and Draw
+          const homeML = h2h?.outcomes?.find(o => o.name === game.home_team)?.price ?? null;
+          const awayML = h2h?.outcomes?.find(o => o.name === game.away_team)?.price ?? null;
+          const drawML = h2h?.outcomes?.find(o => o.name === 'Draw')?.price ?? null;
+
+          return {
+            id: game.id,
+            homeTeam: game.home_team,
+            awayTeam: game.away_team,
+            startTime: game.commence_time,
+            homeML, awayML, drawML,
+            // Soccer doesn't use traditional spreads in our scope; leaving null
+            homeSpread: null, homeSpreadOdds: null,
+            awaySpread: null, awaySpreadOdds: null,
+            total:    total?.outcomes?.find(o => o.name === 'Over')?.point ?? null,
+            overOdds: total?.outcomes?.find(o => o.name === 'Over')?.price ?? null,
+            underOdds:total?.outcomes?.find(o => o.name === 'Under')?.price ?? null,
+            vendor: book?.key || 'draftkings',
+            league,
+            leagueLabel: label,
+          };
+        });
+
+        allGames.push(...leagueGames);
+      }
+
+      const fetchedAt = Date.now();
+      cache[cacheKey] = { data: allGames, ts: fetchedAt }; saveCache(cache);
+      return {
+        statusCode: 200,
+        headers: { ...headers, 'X-Lines-Fetched-At': String(fetchedAt) },
+        body: JSON.stringify(allGames),
+      };
+    }
+
+    // Soccer player props are not implemented in this stage — return empty.
+    // We'll add player props when the user upgrades to the \$99 Odds API tier.
+    if (sport === 'soccer') {
+      return { statusCode: 200, headers, body: JSON.stringify([]) };
+    }
+
+    // ── ALL OTHER SPORTS (unchanged from before) ──────────────────────────
     if (type === 'games') {
       // Game lines — 1 credit total
       const r = await get(`https://api.the-odds-api.com/v4/sports/${oddsSport}/odds?apiKey=${ODDS_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`);
