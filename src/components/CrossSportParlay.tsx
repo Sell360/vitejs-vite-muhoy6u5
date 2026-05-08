@@ -8,10 +8,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { ParlayShareCard } from './ParlayShareCard';
 import { PublicBetting } from './PublicBetting';
 
+// NOTE: 'soccer' is intentionally left out of SPORTS until we wire up
+// soccer prop fetching in a later stage. SPORT_LABELS still includes it
+// so any leg that references soccer (future) can render correctly.
 const SPORTS: Sport[] = ['mlb', 'nba', 'nfl', 'ncaaf', 'nhl', 'wnba', 'ufc'];
 const SPORT_LABELS: Record<Sport, string> = {
   mlb: 'MLB', nba: 'NBA', nfl: 'NFL', ncaaf: 'CFB',
-  nhl: 'NHL', wnba: 'WNBA', ufc: 'UFC',
+  nhl: 'NHL', wnba: 'WNBA', ufc: 'UFC', soccer: 'Soccer',
 };
 const GAME_BET_TYPES = ['Moneyline', 'Spread', 'Game Total'];
 

@@ -1,4 +1,37 @@
-export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc' | 'ncaaf';
+export type Sport = 'mlb' | 'wnba' | 'nba' | 'nfl' | 'nhl' | 'ufc' | 'ncaaf' | 'soccer';
+
+// Soccer leagues we cover. Each maps to its own Odds API key + ESPN endpoint.
+// Listing in popularity order so UI defaults to EPL.
+export type SoccerLeague = 'epl' | 'laliga' | 'ucl' | 'seriea' | 'bundesliga';
+
+// Display names for league pills
+export const SOCCER_LEAGUE_NAMES: Record<SoccerLeague, string> = {
+  epl: 'Premier League',
+  laliga: 'La Liga',
+  ucl: 'Champions League',
+  seriea: 'Serie A',
+  bundesliga: 'Bundesliga',
+};
+
+// ESPN scoreboard paths per league. Each soccer league lives at a separate
+// ESPN URL (unlike one-league sports). When fetching games we'll iterate
+// through these and merge results.
+export const SOCCER_ESPN_PATHS: Record<SoccerLeague, string> = {
+  epl: 'soccer/eng.1',
+  laliga: 'soccer/esp.1',
+  ucl: 'soccer/uefa.champions',
+  seriea: 'soccer/ita.1',
+  bundesliga: 'soccer/ger.1',
+};
+
+// Odds API sport keys per league
+export const SOCCER_ODDS_KEYS: Record<SoccerLeague, string> = {
+  epl: 'soccer_epl',
+  laliga: 'soccer_spain_la_liga',
+  ucl: 'soccer_uefa_champs_league',
+  seriea: 'soccer_italy_serie_a',
+  bundesliga: 'soccer_germany_bundesliga',
+};
 
 export interface GameData {
   id: string; homeTeam: string; awayTeam: string; startTime: string;
@@ -50,6 +83,12 @@ const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const ESPN_PATHS: Record<Sport, string> = {
   mlb: 'baseball/mlb', wnba: 'basketball/wnba', nba: 'basketball/nba',
   nfl: 'football/nfl', ncaaf: 'football/college-football', nhl: 'hockey/nhl', ufc: 'mma/ufc',
+  // Soccer is multi-league: this path is the default (EPL). When we add the
+  // league selector to OddsBoard in stage 3, we'll bypass ESPN_PATHS for
+  // soccer and read SOCCER_ESPN_PATHS[league] instead. Including a default
+  // here keeps the type-record complete so other code that does
+  // ESPN_PATHS[sport] doesn't crash when sport==='soccer'.
+  soccer: 'soccer/eng.1',
 };
 
 const cache: Record<string, { data: any; ts: number }> = {};
