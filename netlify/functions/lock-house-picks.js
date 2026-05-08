@@ -112,7 +112,10 @@ function build3LegParlay(pool, skipTop = 0) {
     })),
     combinedOdds,
     confidence: avgConf,
-    tier: avgConf >= 75 ? 'S' : avgConf >= 65 ? 'A' : 'B',
+    // Tier boundaries: S=80+, A=65-79, B=below 65. Raised S threshold from
+    // 75 to 80 so the public 'S-tier track record' on the landing hero is
+    // built only from genuinely top-confidence picks, not borderline ones.
+    tier: avgConf >= 80 ? 'S' : avgConf >= 65 ? 'A' : 'B',
   };
 }
 

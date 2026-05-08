@@ -383,7 +383,7 @@ function buildAllParlays(
       const combinedOdds = decimalToAmerican(combined);
       const avgConf = Math.round(legs.reduce((a, b) => a + b.confidence, 0) / legs.length);
       const allFlags = [...new Set(legs.flatMap(l => l.edgeFlags))].slice(0, 4);
-      const tier: 'S' | 'A' | 'B' = avgConf >= 75 ? 'S' : avgConf >= 65 ? 'A' : 'B';
+      const tier: 'S' | 'A' | 'B' = avgConf >= 80 ? 'S' : avgConf >= 65 ? 'A' : 'B';
 
       parlays.push({
         id: `${name}-${size}-${attempt}-${Date.now()}`,
@@ -422,7 +422,7 @@ export function ParlayBuilder({ props, games, sport }: ParlayBuilderProps) {
     setExpanded(built[0]?.id || null);
 
     // Notify on top S-tier parlay (only the highest one to avoid spam)
-    const top = built.find(p => p.tier === 'S' && p.confidence >= 75);
+    const top = built.find(p => p.tier === 'S' && p.confidence >= 80);
     if (top) {
       notifications.push({
         type: 'parlay',
