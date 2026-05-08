@@ -172,15 +172,50 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
 
           {stats && stats.totalPicks > 0 ? (
             <>
+              {/* HEADLINE METRIC: per-leg hit rate. Always honest, more
+                  resilient to bad parlay-luck days where some legs hit. */}
+              {stats.legsTotal > 0 && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(74,222,128,.10), rgba(34,211,238,.05))',
+                  border: '1px solid rgba(74,222,128,.25)',
+                  borderRadius: 10, padding: '12px 14px', marginBottom: 10,
+                }}>
+                  <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 }}>
+                    Per-Leg Hit Rate
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{
+                      fontFamily: "'Barlow Condensed', sans-serif",
+                      fontSize: 32, fontWeight: 900,
+                      color: stats.legHitRate >= 60 ? '#4ade80' : stats.legHitRate >= 50 ? '#fbbf24' : '#c8ddf0',
+                    }}>{stats.legHitRate.toFixed(1)}%</span>
+                    <span style={{ fontSize: 11, color: '#8ab0cc', fontWeight: 600 }}>
+                      {stats.legsHit} of {stats.legsTotal} legs
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* SECONDARY ROW: tier-specific record + units */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-                <HeroStat label="Win Rate" value={`${stats.winRate}%`} color={stats.winRate >= 55 ? '#4ade80' : stats.winRate >= 50 ? '#fbbf24' : '#f87171'} />
-                <HeroStat label="Record" value={`${stats.wins}-${stats.losses}${stats.pushes ? `-${stats.pushes}` : ''}`} color="#c8ddf0" />
-                <HeroStat label="Units P/L" value={`${stats.unitsPL >= 0 ? '+' : ''}${stats.unitsPL.toFixed(2)}u`} color={stats.unitsPL >= 0 ? '#4ade80' : '#f87171'} />
-                <HeroStat label="ROI" value={`${stats.roi >= 0 ? '+' : ''}${stats.roi.toFixed(1)}%`} color={stats.roi >= 5 ? '#4ade80' : stats.roi >= 0 ? '#fbbf24' : '#f87171'} />
+                <HeroStat
+                  label="S-Tier Record"
+                  value={`${stats.byTier.S?.wins || 0}-${(stats.byTier.S?.picks || 0) - (stats.byTier.S?.wins || 0)}`}
+                  color={(stats.byTier.S?.winRate || 0) >= 55 ? '#4ade80' : '#c8ddf0'}
+                />
+                <HeroStat
+                  label="Units P/L"
+                  value={`${stats.unitsPL >= 0 ? '+' : ''}${stats.unitsPL.toFixed(2)}u`}
+                  color={stats.unitsPL >= 0 ? '#4ade80' : '#f87171'}
+                />
               </div>
+
+              {/* LAST 10 visualization */}
               {stats.recentForm.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5 }}>Last 10</div>
+                  <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5 }}>
+                    Last 10 Settled
+                  </div>
                   <div style={{ display: 'flex', gap: 3 }}>
                     {stats.recentForm.map((r, i) => {
                       const c = r === 'W' ? '#4ade80' : r === 'L' ? '#f87171' : '#fbbf24';
@@ -195,6 +230,18 @@ export function LandingHero({ onSignUp, onViewPicks, onViewGames }: Props) {
                       );
                     })}
                   </div>
+                </div>
+              )}
+
+              {/* Pending count footnote — sets expectation for new visitors */}
+              {stats.pending > 0 && (
+                <div style={{
+                  marginTop: 10, padding: '6px 10px',
+                  background: 'rgba(251,191,36,.08)',
+                  border: '1px solid rgba(251,191,36,.2)',
+                  borderRadius: 6, fontSize: 10, color: '#fbbf24', fontWeight: 700,
+                }}>
+                  ⏳ {stats.pending} picks pending settlement
                 </div>
               )}
             </>

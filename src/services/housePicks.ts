@@ -43,6 +43,13 @@ export interface TrackRecord {
   byTier: Record<string, { picks: number; wins: number; winRate: number }>;
   bySport: Record<string, { picks: number; wins: number; winRate: number }>;
   recentForm: ('W' | 'L' | 'P' | '?')[];  // last 10
+  // Per-leg hit rate: across all settled parlays, how many individual legs hit.
+  // Always higher than parlay W/L because losing parlays still have legs that
+  // hit. This is the metric sharps publish — much more honest than parlay W/L
+  // alone, which punishes a 4-leg parlay with one bad leg as a full 'loss'.
+  legsHit: number;
+  legsTotal: number;
+  legHitRate: number;    // 0-100
 }
 
 export async function getHousePicks(daysBack = 30, limit = 100): Promise<HousePick[]> {
@@ -122,12 +129,33 @@ export function computeTrackRecord(picks: HousePick[]): TrackRecord {
     p.status === 'won' ? 'W' : p.status === 'lost' ? 'L' : p.status === 'push' ? 'P' : '?'
   ) as TrackRecord['recentForm'];
 
+  // Per-leg hit rate. We use the legs_won / legs_lost columns populated by
+  // the auto-settler (auto-settle-picks.js writes these once a pick resolves).
+  // Falls back to assuming all legs hit on 'won' picks and zero on 'lost' picks
+  // when the per-leg counts are missing (older picks before settler upgrade).
+  let legsHit = 0;
+  let legsTotal = 0;
+  for (const p of settled) {
+    if (p.legs_won != null && p.legs_lost != null) {
+      legsHit += p.legs_won;
+      legsTotal += p.legs_won + p.legs_lost + (p.legs_pushed || 0);
+    } else if (p.status === 'won') {
+      legsHit += p.legs.length;
+      legsTotal += p.legs.length;
+    } else if (p.status === 'lost') {
+      legsTotal += p.legs.length;
+    }
+  }
+  const legHitRate = legsTotal > 0 ? (legsHit / legsTotal) * 100 : 0;
+
   return {
     totalPicks: picks.length, wins, losses, pushes, pending,
     winRate: Math.round(winRate * 10) / 10,
     unitsPL: Math.round(unitsPL * 100) / 100,
     roi: Math.round(roi * 10) / 10,
     byTier, bySport, recentForm,
+    legsHit, legsTotal,
+    legHitRate: Math.round(legHitRate * 10) / 10,
   };
 }
 
