@@ -6,6 +6,7 @@ import { CrossSportParlay } from './components/CrossSportParlay';
 import type { Sport, PlayerProp } from './services/api';
 import { BetTracker } from './components/BetTracker';
 import { OddsBoard } from './components/OddsBoard';
+import { PublicTrap } from './components/PublicTrap';
 import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
 import { HousePicks } from './components/HousePicks';
@@ -610,6 +611,7 @@ export default function Betz360() {
                 <div className="b360-empty"><div className="b360-empty-icon">⏳</div><div className="b360-empty-title">Loading games…</div></div>
               ) : (
                 <>
+                  <PublicTrap sport={sport} />
                   <OddsBoard sport={sport} games={games} onNavigateParlays={() => setTab('parlays')} />
                   <CascadeEdgeCard />
                 </>
