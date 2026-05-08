@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../services/api';
 import type { Sport, GameData, WNBAGameData, GameLine } from '../services/api';
+import { SOCCER_LEAGUE_NAMES } from '../services/api';
 import { GameProjection } from './GameProjection';
 import { AltLinesPanel } from './AltLinesPanel';
 import { SharpLineBadge } from './SharpLineBadge';
@@ -22,7 +23,7 @@ interface BetSlipLeg {
   gameId: string;
   matchup: string;
   betType: 'ML' | 'SPREAD' | 'TOTAL';
-  side: 'home' | 'away' | 'over' | 'under';
+  side: 'home' | 'away' | 'over' | 'under' | 'draw';
   label: string;
   odds: number;
   sport: Sport;
@@ -116,6 +117,9 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
   const [lines, setLines] = useState<GameLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
   const [linesFetchedAt, setLinesFetchedAt] = useState<number | undefined>(undefined);
+  // Soccer-only: filter games by league. 'all' shows all 5 leagues merged.
+  // For non-soccer sports this is ignored.
+  const [soccerLeague, setSoccerLeague] = useState<'all' | string>('all');
   const [reversals, setReversals] = useState<Map<string, ReversalSignal>>(new Map());
   const [slip, setSlip] = useState<BetSlipLeg[]>([]);
   const [stake, setStake] = useState('25');
@@ -182,11 +186,19 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
   // For final games, blank out the lines so we don't render garbage prices.
   // For live games with closed lines, do the same. Scheduled games always
   // keep their lines (they aren't expired yet).
-  const merged = mergeGamesWithLines(games, lines).map(({ game, line }) => {
-    if (game.status === 'final') return { game, line: null };
-    if (game.status === 'live' && isClosedLine(line)) return { game, line: null };
-    return { game, line };
-  });
+  // For soccer, also apply the league filter (default 'all' = show all 5).
+  const isSoccer = sport === 'soccer';
+  const merged = mergeGamesWithLines(games, lines)
+    .filter(({ game }) => {
+      if (!isSoccer) return true;
+      if (soccerLeague === 'all') return true;
+      return (game as GameData).league === soccerLeague;
+    })
+    .map(({ game, line }) => {
+      if (game.status === 'final') return { game, line: null };
+      if (game.status === 'live' && isClosedLine(line)) return { game, line: null };
+      return { game, line };
+    });
 
   const combinedOdds = slip.length > 1
     ? decimalToAmerican(slip.reduce((acc, l) => acc * americanToDecimal(l.odds), 1))
@@ -262,6 +274,33 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
         );
       })()}
 
+      {/* ── SOCCER LEAGUE FILTER ──
+          Only renders when sport==='soccer'. Lets users narrow to one league
+          or see all 5 merged. Default 'all'. */}
+      {isSoccer && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {(['all', 'epl', 'laliga', 'ucl', 'seriea', 'bundesliga'] as const).map(lg => {
+            const active = soccerLeague === lg;
+            const label = lg === 'all' ? 'All Leagues' : SOCCER_LEAGUE_NAMES[lg];
+            return (
+              <button
+                key={lg}
+                onClick={() => setSoccerLeague(lg)}
+                style={{
+                  padding: '5px 11px',
+                  background: active ? 'linear-gradient(135deg, rgba(56,189,248,.18), rgba(56,189,248,.08))' : 'rgba(10,18,48,.6)',
+                  color: active ? '#38bdf8' : '#8ab0cc',
+                  border: `1px solid ${active ? 'rgba(56,189,248,.4)' : 'rgba(26,48,96,.5)'}`,
+                  borderRadius: 7, fontSize: 11, fontWeight: 800,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  fontFamily: "'Barlow', sans-serif",
+                }}
+              >{label}</button>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── COLUMN HEADERS ── */}
       <div className="b360-odds-row" style={{
         padding: '6px 0 8px',
@@ -269,10 +308,10 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
         marginBottom: 4,
       }}>
         <div style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase', paddingLeft: 4 }}>
-          {sport.toUpperCase()} — {games.length} Games
+          {sport.toUpperCase()} — {merged.length} Games
           {linesLoading && <span style={{ color: '#fbbf24', marginLeft: 6 }}>⏳ Loading lines…</span>}
         </div>
-        {['MONEYLINE', 'SPREAD', 'TOTAL O/U'].map(h => (
+        {(isSoccer ? ['MONEYLINE', 'DRAW', 'TOTAL O/U'] : ['MONEYLINE', 'SPREAD', 'TOTAL O/U']).map(h => (
           <div key={h} style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', textAlign: 'center' }}>{h}</div>
         ))}
       </div>
@@ -360,7 +399,7 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
                     gameId: game.id,
                     matchup: `${game.awayTeam} @ ${game.homeTeam}`,
                     betType,
-                    side: side as 'home' | 'away' | 'over' | 'under',
+                    side: side as 'home' | 'away' | 'over' | 'under' | 'draw',
                     label,
                     odds,
                     sport,
@@ -392,23 +431,41 @@ export function OddsBoard({ sport, games }: OddsBoardProps) {
               />
             </div>
 
-            {/* Spread */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <OddsCell
-                label={line?.awaySpread != null ? `${(line.awaySpread ?? 0) > 0 ? '+' : ''}${line.awaySpread}` : '—'}
-                sublabel="AWAY"
-                odds={line?.awaySpreadOdds}
-                isAdded={isAdded(game.id, 'SPREAD', 'away')}
-                onClick={() => line?.awaySpreadOdds && toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'SPREAD', side: 'away', label: `${game.awayTeam} ${line.awaySpread}`, odds: line.awaySpreadOdds, sport })}
-              />
-              <OddsCell
-                label={line?.homeSpread != null ? `${(line.homeSpread ?? 0) > 0 ? '+' : ''}${line.homeSpread}` : '—'}
-                sublabel="HOME"
-                odds={line?.homeSpreadOdds}
-                isAdded={isAdded(game.id, 'SPREAD', 'home')}
-                onClick={() => line?.homeSpreadOdds && toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'SPREAD', side: 'home', label: `${game.homeTeam} ${line.homeSpread}`, odds: line.homeSpreadOdds, sport })}
-              />
-            </div>
+            {/* Middle column: Spread for normal sports, Draw for soccer (3-way ML) */}
+            {isSoccer ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, justifyContent: 'center' }}>
+                <OddsCell
+                  label="DRAW"
+                  sublabel="X"
+                  odds={line?.drawML}
+                  isAdded={isAdded(game.id, 'ML', 'draw')}
+                  onClick={() => line?.drawML && toggleLeg({
+                    gameId: game.id,
+                    matchup: `${game.awayTeam} @ ${game.homeTeam}`,
+                    betType: 'ML', side: 'draw',
+                    label: `${game.awayTeam} vs ${game.homeTeam} Draw`,
+                    odds: line.drawML, sport,
+                  })}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <OddsCell
+                  label={line?.awaySpread != null ? `${(line.awaySpread ?? 0) > 0 ? '+' : ''}${line.awaySpread}` : '—'}
+                  sublabel="AWAY"
+                  odds={line?.awaySpreadOdds}
+                  isAdded={isAdded(game.id, 'SPREAD', 'away')}
+                  onClick={() => line?.awaySpreadOdds && toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'SPREAD', side: 'away', label: `${game.awayTeam} ${line.awaySpread}`, odds: line.awaySpreadOdds, sport })}
+                />
+                <OddsCell
+                  label={line?.homeSpread != null ? `${(line.homeSpread ?? 0) > 0 ? '+' : ''}${line.homeSpread}` : '—'}
+                  sublabel="HOME"
+                  odds={line?.homeSpreadOdds}
+                  isAdded={isAdded(game.id, 'SPREAD', 'home')}
+                  onClick={() => line?.homeSpreadOdds && toggleLeg({ gameId: game.id, matchup: `${game.awayTeam} @ ${game.homeTeam}`, betType: 'SPREAD', side: 'home', label: `${game.homeTeam} ${line.homeSpread}`, odds: line.homeSpreadOdds, sport })}
+                />
+              </div>
+            )}
 
             {/* Total */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

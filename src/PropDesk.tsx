@@ -19,13 +19,14 @@ import { AuthModal } from './components/AuthModal';
 import { useAuth } from './contexts/AuthContext';
 
 const SPORTS: { key: Sport; label: string; emoji: string }[] = [
-  { key: 'mlb',   label: 'MLB',  emoji: '⚾' },
-  { key: 'nba',   label: 'NBA',  emoji: '🏀' },
-  { key: 'nfl',   label: 'NFL',  emoji: '🏈' },
-  { key: 'ncaaf', label: 'CFB',  emoji: '🎓' },
-  { key: 'nhl',   label: 'NHL',  emoji: '🏒' },
-  { key: 'wnba',  label: 'WNBA', emoji: '🏀' },
-  { key: 'ufc',   label: 'UFC',  emoji: '🥊' },
+  { key: 'mlb',    label: 'MLB',    emoji: '⚾' },
+  { key: 'nba',    label: 'NBA',    emoji: '🏀' },
+  { key: 'nfl',    label: 'NFL',    emoji: '🏈' },
+  { key: 'ncaaf',  label: 'CFB',    emoji: '🎓' },
+  { key: 'nhl',    label: 'NHL',    emoji: '🏒' },
+  { key: 'wnba',   label: 'WNBA',   emoji: '🏀' },
+  { key: 'soccer', label: 'Soccer', emoji: '⚽' },
+  { key: 'ufc',    label: 'UFC',    emoji: '🥊' },
 ];
 
 export default function Betz360() {

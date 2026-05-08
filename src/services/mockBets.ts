@@ -11,7 +11,7 @@ export interface MockBet {
   matchup: string;                 // "Yankees @ Red Sox"
   bet_type: 'ML' | 'SPREAD' | 'TOTAL' | 'PROP' | 'PARLAY';
   pick_label: string;              // "Yankees -1.5" or "Mahomes Over 285.5"
-  pick_side: 'home' | 'away' | 'over' | 'under' | null;
+  pick_side: 'home' | 'away' | 'over' | 'under' | 'draw' | null;
   line: number | null;             // spread/total line at bet time
   odds: number;                    // American odds at bet time
   stake: number;                   // Mock dollars
@@ -37,7 +37,7 @@ export interface BetLeg {
   gameId?: string;
   gameTime?: string | null;
   betType?: 'ML' | 'SPREAD' | 'TOTAL' | 'PROP';
-  side?: 'home' | 'away' | 'over' | 'under' | null;
+  side?: 'home' | 'away' | 'over' | 'under' | 'draw' | null;
   line?: number | null;
   label?: string;
   player?: string;

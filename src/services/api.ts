@@ -39,6 +39,8 @@ export interface GameData {
   umpire?: { name: string; strikeZoneTendency: 'tight' | 'wide' | 'normal'; };
   venue: string; status: 'scheduled' | 'live' | 'final';
   homeScore?: number; awayScore?: number; inning?: string;
+  // Soccer-only: league code ('epl', 'laliga', etc.) for filtering
+  league?: string;
 }
 
 export interface PlayerProp {
@@ -103,6 +105,28 @@ const TTL = 8 * 60 * 1000;
 class ApiService {
 
   async getGames(sport: Sport, date: string): Promise<(GameData | WNBAGameData)[]> {
+    // Soccer is multi-league: fetch all 5 ESPN scoreboards in parallel and merge.
+    // Each game is tagged with its league code via a custom property on the
+    // returned object (we widen GameData with optional league field).
+    if (sport === 'soccer') {
+      const d = date.replace(/-/g, '');
+      const leagues = Object.entries(SOCCER_ESPN_PATHS) as [SoccerLeague, string][];
+      const settled = await Promise.allSettled(leagues.map(([league, path]) =>
+        fetch(`${ESPN}/${path}/scoreboard?dates=${d}&limit=20`)
+          .then(r => r.ok ? r.json() : Promise.reject(new Error(`ESPN ${r.status}`)))
+          .then(data => ({ league, games: this.transformESPN(data.events || []) }))
+      ));
+      const allGames: GameData[] = [];
+      for (const s of settled) {
+        if (s.status !== 'fulfilled') continue;
+        for (const g of s.value.games) {
+          // Tag each game with its league so OddsBoard can filter
+          (g as GameData & { league?: string }).league = s.value.league;
+          allGames.push(g);
+        }
+      }
+      return allGames;
+    }
     const path = ESPN_PATHS[sport];
     if (!path) return [];
     try {
