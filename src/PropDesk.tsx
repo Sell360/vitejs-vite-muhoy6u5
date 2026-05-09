@@ -626,7 +626,11 @@ export default function Betz360() {
                     ⚡ Parlay Builder {allProps.length>0&&<span className="b360-chip b360-chip-blue" style={{marginLeft:5}}>{allProps.length}</span>}
                   </button>
                   <button className={`b360-subtab${propView==='props'?' active':''}`} onClick={() => setPropView('props')}>
-                    📋 Props {selectedGameId&&<span className="b360-chip b360-chip-green" style={{marginLeft:5}}>{props.length}</span>}
+                    📋 Props {(() => {
+                      const playerProps = allProps.filter(p => !p.isGameLine);
+                      const filtered = selectedGameId ? playerProps.filter(p => p.gameId === selectedGameId) : playerProps;
+                      return filtered.length > 0 && <span className="b360-chip b360-chip-green" style={{marginLeft:5}}>{filtered.length}</span>;
+                    })()}
                   </button>
                 </div>
                 {selectedGameId && (
@@ -639,16 +643,34 @@ export default function Betz360() {
                 </ProGate>
               ))}
               {propView==='props' && (
-                selectedGameId
-                  ? <PropsList props={props} onAnalyzeProp={analyzeProp}/>
-                  : <div className="b360-empty" style={{padding:'48px 20px'}}>
-                      <div className="b360-empty-icon">🏟</div>
-                      <div className="b360-empty-title">Select a game to view props</div>
-                      <div className="b360-empty-sub">Switch to the Games tab and click any matchup</div>
-                      <button className="b360-nav-btn active" style={{marginTop:14,display:'inline-flex',borderRadius:7,padding:'7px 16px',fontSize:13,fontWeight:700,fontFamily:"'Barlow',sans-serif",cursor:'pointer',color:'#f0f6ff',background:'rgba(14,165,233,.1)',border:'1px solid rgba(14,165,233,.25)'}} onClick={() => setTab('games')}>
-                        View Games →
-                      </button>
-                    </div>
+                propsLoading ? (
+                  <div className="b360-empty" style={{padding:'48px 20px'}}>
+                    <div className="b360-empty-icon">⏳</div>
+                    <div className="b360-empty-title">Loading props…</div>
+                  </div>
+                ) : propsError ? (
+                  <div className="b360-empty" style={{padding:'48px 20px'}}>
+                    <div className="b360-empty-icon">⚠️</div>
+                    <div className="b360-empty-title">{propsError}</div>
+                    <button className="b360-nav-btn active" style={{marginTop:14,display:'inline-flex',borderRadius:7,padding:'7px 16px',fontSize:13,fontWeight:700,fontFamily:"'Barlow',sans-serif",cursor:'pointer',color:'#f0f6ff',background:'rgba(14,165,233,.1)',border:'1px solid rgba(14,165,233,.25)'}} onClick={refreshData}>↻ Try again</button>
+                  </div>
+                ) : (() => {
+                  // Show props for selected game if set, otherwise all player props for the sport
+                  const list = selectedGameId
+                    ? props.length > 0 ? props : allProps.filter(p => p.gameId === selectedGameId && !p.isGameLine)
+                    : allProps.filter(p => !p.isGameLine);
+                  if (list.length === 0) {
+                    return (
+                      <div className="b360-empty" style={{padding:'48px 20px'}}>
+                        <div className="b360-empty-icon">🏟</div>
+                        <div className="b360-empty-title">No player props available</div>
+                        <div className="b360-empty-sub">{sport === 'soccer' ? 'Soccer player props require the upgraded API tier.' : `Either no props are listed for ${sport.toUpperCase()} games today, or the data hasn't loaded yet.`}</div>
+                        <button className="b360-nav-btn active" style={{marginTop:14,display:'inline-flex',borderRadius:7,padding:'7px 16px',fontSize:13,fontWeight:700,fontFamily:"'Barlow',sans-serif",cursor:'pointer',color:'#f0f6ff',background:'rgba(14,165,233,.1)',border:'1px solid rgba(14,165,233,.25)'}} onClick={refreshData}>↻ Refresh</button>
+                      </div>
+                    );
+                  }
+                  return <PropsList props={list} onAnalyzeProp={analyzeProp} />;
+                })()
               )}
             </div>
           </div>
