@@ -1,313 +1,193 @@
-// SCHEDULED FUNCTION — runs daily at 13:00 UTC (≈9am ET).
-// 1. Fetches today's player props from Odds API (reuses our existing /api/props cache logic)
-// 2. Scores each prop with a simplified version of the parlay-builder algorithm
-// 3. Builds top S-tier 3-leg parlay per sport (NFL/NBA/MLB)
-// 4. Stores top 3 picks of the day in house_picks table
-// 5. Returns count for monitoring
-const https = require('https');
+// HOUSE PICKS V2 — single-leg game-line picks gated by 2+ hard signals.
+// SIGNALS: polymarket disagree 3%+, RLM 5+ cents against public, steam (3
+// snapshots same direction 8+ cents total), public 75%+ on opposite side,
+// AI projection 5%+ better than DK. 3+ signals = S, 2 = A, less = filtered.
 
+const https = require('https');
 const ODDS_KEY = process.env.ODDS_API_KEY;
 const SUPA_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.supabase_url || process.env.vite_supabase_url;
 const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.supabase_service_role_key || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-// Active sports rotation: try MLB first (most volume), then NBA, then NFL
 const PICK_SPORTS = [
-  { sport: 'mlb',  oddsKey: 'baseball_mlb',           propMarkets: 'batter_hits,batter_total_bases,pitcher_strikeouts,batter_rbis' },
-  { sport: 'nba',  oddsKey: 'basketball_nba',         propMarkets: 'player_points,player_rebounds,player_assists,player_threes' },
-  { sport: 'nfl',  oddsKey: 'americanfootball_nfl',   propMarkets: 'player_pass_yds,player_rush_yds,player_reception_yds,player_receptions' },
-  { sport: 'nhl',  oddsKey: 'icehockey_nhl',          propMarkets: 'player_shots_on_goal,player_points' },
-  { sport: 'wnba', oddsKey: 'basketball_wnba',        propMarkets: 'player_points,player_rebounds,player_assists' },
+  { sport: 'mlb',  oddsKey: 'baseball_mlb' },
+  { sport: 'nba',  oddsKey: 'basketball_nba' },
+  { sport: 'nhl',  oddsKey: 'icehockey_nhl' },
+  { sport: 'wnba', oddsKey: 'basketball_wnba' },
 ];
+const POLY_PCT = 3, RLM_TICKS = 5, PUBLIC_PCT = 75, AI_PCT = 5, MIN_SIG = 2;
 
-function fetchJSON(url) {
+function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    https.get({ hostname: u.hostname, path: u.pathname + u.search, headers: { 'User-Agent': 'Betz360/1.0' } }, (res) => {
+    https.get({ hostname: u.hostname, path: u.pathname + u.search, headers: { 'User-Agent': 'Betz360/1.0', ...(headers || {}) } }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString()) }); }
-        catch (e) { reject(e); }
-      });
+      res.on('end', () => { try { resolve({ status: res.statusCode, data: JSON.parse(Buffer.concat(chunks).toString()) }); } catch (e) { reject(e); } });
     }).on('error', reject);
   });
 }
-
 function postJSON(url, body, headers) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const data = JSON.stringify(body);
-    const req = https.request({
-      hostname: u.hostname, path: u.pathname + u.search, method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers },
-    }, (res) => {
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers } }, (res) => {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
     });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
+    req.on('error', reject); req.write(data); req.end();
   });
 }
-
-function americanToDecimal(o) {
-  if (!o) return 1;
-  return o > 0 ? o / 100 + 1 : 100 / Math.abs(o) + 1;
+function impliedPct(o) { if (!o) return 50; const d = o > 0 ? o / 100 + 1 : 100 / Math.abs(o) + 1; return (1 / d) * 100; }
+function publicEstimate(homeML, awayML) {
+  const homeFav = homeML < 0;
+  const ml = homeFav ? Math.abs(homeML) : Math.abs(awayML);
+  const skew = Math.min(ml / 10, 35);
+  const home = Math.round(homeFav ? 50 + skew : 50 - skew);
+  return { home, away: 100 - home };
 }
-function decimalToAmerican(d) {
-  if (d <= 1) return 0;
-  return d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
+async function getHistory(eventId) {
+  if (!eventId || !SUPA_URL || !SUPA_KEY) return [];
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(eventId)) return [];
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const url = SUPA_URL + '/rest/v1/line_snapshots?event_id=eq.' + eventId + '&taken_at=gte.' + encodeURIComponent(since) + '&order=taken_at.asc&select=*';
+  try { const r = await fetchJSON(url, { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }); return Array.isArray(r.data) ? r.data : []; } catch { return []; }
 }
-function impliedProb(o) {
-  return Math.round((1 / americanToDecimal(o)) * 100);
+function detectRLM(snaps, publicSide) {
+  if (!Array.isArray(snaps) || snaps.length < 2) return false;
+  const f = snaps[0], l = snaps[snaps.length - 1];
+  if (!f || !l || f.home_ml == null || l.home_ml == null) return false;
+  const d = l.home_ml - f.home_ml;
+  if (publicSide === 'home' && d >= RLM_TICKS) return true;
+  if (publicSide === 'away' && d <= -RLM_TICKS) return true;
+  return false;
 }
-
-// Simplified leg scoring: prefer slight underdogs (-130 to +110), penalize heavy favorites
-function scoreLeg(odds) {
-  if (!odds || odds === 0) return 0;
-  if (odds < -200 || odds > 200) return 35;       // too extreme either way
-  if (odds >= -130 && odds <= 110) return 75;     // sweet spot
-  if (odds >= -180 && odds <= 150) return 65;
-  return 50;
+function detectSteam(snaps, side) {
+  if (!Array.isArray(snaps) || snaps.length < 3) return false;
+  const r = snaps.slice(-3);
+  const d = r[2].home_ml - r[0].home_ml;
+  if (side === 'home' && d <= -8) return true;
+  if (side === 'away' && d >= 8) return true;
+  return false;
 }
-
-// Build the best 3-leg parlay from a pool of legs. Each leg = {prop, pick, odds, conf}.
-function build3LegParlay(pool, skipTop = 0) {
-  if (pool.length < 3 + skipTop) return null;
-  // Sort by confidence, then walk down the list picking legs that:
-  //  - aren't the same player+propType (no duplicating "Curry over points" twice)
-  //  - respect the underdog cap (max 2 dogs per parlay)
-  // Same-game multi-legs (SGPs) are allowed — that's how modern parlays work.
-  const sorted = pool.slice().sort((a, b) => b.confidence - a.confidence);
-  const seenPlayerProps = new Set();
-  const legs = [];
-  let underdogs = 0;
-  let skippedSoFar = 0;
-  for (const l of sorted) {
-    if (legs.length >= 3) break;
-    const key = `${l.playerName}-${l.propType}`;
-    if (seenPlayerProps.has(key)) continue;
-    if (l.odds > 0 && underdogs >= 2) continue;
-    // Skip the first `skipTop` qualifying legs so a second/third parlay
-    // built from the same pool produces meaningfully different picks
-    if (skippedSoFar < skipTop) { skippedSoFar++; continue; }
-    seenPlayerProps.add(key);
-    if (l.odds > 0) underdogs++;
-    legs.push(l);
+function aiProj(homeML_dk, awayML_dk, allBooks) {
+  if (!allBooks || allBooks.length < 3) return { home: false, away: false };
+  let hs = 0, as = 0, n = 0;
+  for (const b of allBooks) {
+    const h2h = b.markets && b.markets.find(m => m.key === 'h2h');
+    if (!h2h || !h2h.outcomes || h2h.outcomes.length < 2) continue;
+    const h = h2h.outcomes[0] && h2h.outcomes[0].price;
+    const a = h2h.outcomes[1] && h2h.outcomes[1].price;
+    if (!h || !a) continue;
+    hs += impliedPct(h); as += impliedPct(a); n++;
   }
-  if (legs.length < 3) return null;
-  const dec = legs.reduce((a, l) => a * americanToDecimal(l.odds), 1);
-  const combinedOdds = decimalToAmerican(dec);
-  const avgConf = Math.round(legs.reduce((a, l) => a + l.confidence, 0) / legs.length);
-  return {
-    legs: legs.map(l => ({
-      player: l.playerName,
-      propType: l.propType,
-      line: l.line,
-      pick: l.pick,
-      odds: l.odds,
-      gameId: l.gameId,
-      matchup: l.matchup,
-    })),
-    combinedOdds,
-    confidence: avgConf,
-    // Tier boundaries: S=80+, A=65-79, B=below 65. Raised S threshold from
-    // 75 to 80 so the public 'S-tier track record' on the landing hero is
-    // built only from genuinely top-confidence picks, not borderline ones.
-    tier: avgConf >= 80 ? 'S' : avgConf >= 65 ? 'A' : 'B',
-  };
+  if (n < 3) return { home: false, away: false };
+  const ha = hs / n, aa = as / n;
+  const dh = impliedPct(homeML_dk), da = impliedPct(awayML_dk);
+  return { home: (ha - dh) >= AI_PCT, away: (aa - da) >= AI_PCT };
 }
-
-async function fetchSportProps(sport, oddsKey, propMarkets) {
-  // Step 1: get today's events
-  const evRes = await fetchJSON(`https://api.the-odds-api.com/v4/sports/${oddsKey}/events?apiKey=${ODDS_KEY}`);
-  if (evRes.status !== 200 || !Array.isArray(evRes.data)) return [];
-
-  const events = evRes.data
-    .filter(e => {
-      const t = new Date(e.commence_time).getTime();
-      return t > Date.now() - 30 * 60 * 1000 && t < Date.now() + 24 * 60 * 60 * 1000;
-    })
-    .slice(0, 4); // limit to 4 games to control credit cost
-
-  // Step 2: fetch props per event
-  const allLegs = [];
-  for (const ev of events) {
-    const propRes = await fetchJSON(`https://api.the-odds-api.com/v4/sports/${oddsKey}/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=us&markets=${propMarkets}&oddsFormat=american`);
-    if (propRes.status !== 200) continue;
-
-    const book = propRes.data.bookmakers?.find(b => b.key === 'draftkings') || propRes.data.bookmakers?.[0];
-    if (!book) continue;
-
-    for (const market of book.markets || []) {
-      for (const o of market.outcomes || []) {
-        const playerName = o.description || o.name;
-        const pick = o.name === 'Over' ? 'over' : o.name === 'Under' ? 'under' : null;
-        if (!pick || !o.price) continue;
-        allLegs.push({
-          playerName,
-          propType: market.key.replace(/^(player_|batter_|pitcher_)/, '').replace(/_/g, ' '),
-          line: o.point,
-          pick,
-          odds: o.price,
-          gameId: ev.id,
-          matchup: `${ev.away_team} @ ${ev.home_team}`,
-          confidence: scoreLeg(o.price) + Math.round(Math.random() * 10), // small randomness for variety
-        });
-      }
-    }
-  }
-
-  return allLegs;
+async function getPolyEdge(sport, awayTeam, homeTeam) {
+  try {
+    const r = await fetchJSON('https://betz360.com/api/polymarket?sport=' + sport);
+    if (r.status !== 200 || !r.data || !r.data.markets) return null;
+    const home = (homeTeam || '').toLowerCase();
+    const away = (awayTeam || '').toLowerCase();
+    const m = r.data.markets.find(x => { const q = (x.question || '').toLowerCase(); return q.includes(home) && q.includes(away); });
+    if (!m) return null;
+    return {
+      homeProb: m.outcomePrices && m.outcomePrices[0] ? parseFloat(m.outcomePrices[0]) * 100 : null,
+      awayProb: m.outcomePrices && m.outcomePrices[1] ? parseFloat(m.outcomePrices[1]) * 100 : null,
+    };
+  } catch { return null; }
 }
 
 exports.handler = async (event) => {
-  if (!ODDS_KEY || !SUPA_URL || !SUPA_KEY) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
-  }
-
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const inserted = [];
-  const errors = [];
-  const force = event?.queryStringParameters?.force === '1';
-
-  // Force re-lock requires admin auth (otherwise anyone could keep
-  // triggering the picker, burning Odds API credits)
+  if (!ODDS_KEY || !SUPA_URL || !SUPA_KEY) return { statusCode: 500, body: JSON.stringify({ error: 'Missing env vars' }) };
+  const today = new Date().toISOString().split('T')[0];
+  const inserted = [], errors = [], skipped = [];
+  const force = event && event.queryStringParameters && event.queryStringParameters.force === '1';
   if (force) {
     const ADMIN_KEY = process.env.ADMIN_STATS_KEY || process.env.admin_stats_key;
-    const key = event?.queryStringParameters?.key;
-    if (!ADMIN_KEY || key !== ADMIN_KEY) {
-      return { statusCode: 403, body: JSON.stringify({ error: 'force=1 requires admin key' }) };
-    }
+    const key = event.queryStringParameters.key;
+    if (!ADMIN_KEY || key !== ADMIN_KEY) return { statusCode: 403, body: JSON.stringify({ error: 'force=1 requires admin key' }) };
   }
-
-  // Check if today's picks are already locked in (idempotency)
-  // Skipped when ?force=1 is passed so we can manually re-lock
   if (!force) {
-  const checkRes = await fetchJSON(`${SUPA_URL}/rest/v1/house_picks?pick_date=eq.${today}&select=id`)
-    .catch(() => null);
-  // Note: this check requires the supabase REST headers — we'll do it with proper headers
-  const existingRes = await new Promise((resolve) => {
-    const u = new URL(`${SUPA_URL}/rest/v1/house_picks?pick_date=eq.${today}&select=id`);
-    https.get({
-      hostname: u.hostname, path: u.pathname + u.search,
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
-    }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-        catch { resolve([]); }
-      });
-    }).on('error', () => resolve([]));
-  });
-
-  if (Array.isArray(existingRes) && existingRes.length > 0) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'already_locked', date: today, existing: existingRes.length, hint: 'add ?force=1 to re-lock today' }),
-    };
+    const ex = await fetchJSON(SUPA_URL + '/rest/v1/house_picks?pick_date=eq.' + today + '&select=id', { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }).catch(() => ({ data: [] }));
+    if (Array.isArray(ex.data) && ex.data.length > 0) {
+      return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'already_locked', existing: ex.data.length, hint: 'add ?force=1&key=ADMIN_KEY to re-lock' }) };
+    }
   }
-  } // end !force
-
-  // Generate up to 3 parlays per sport (varying difficulty), keep top 8 overall
   const candidates = [];
-  const skipped = [];
-  for (const { sport, oddsKey, propMarkets } of PICK_SPORTS) {
+  for (const sportConf of PICK_SPORTS) {
+    const sport = sportConf.sport, oddsKey = sportConf.oddsKey;
     try {
-      const legs = await fetchSportProps(sport, oddsKey, propMarkets);
-      if (legs.length < 3) {
-        skipped.push({ sport, reason: `only ${legs.length} valid props found` });
-        continue;
-      }
-      // Build a top parlay, then a second one skipping the top 3 picks, then
-      // a third one skipping 6 — produces three meaningfully different parlays
-      // per sport instead of one. Smaller pools may only support 1-2.
-      let builtCount = 0;
-      for (const skipTop of [0, 3, 6]) {
-        const parlay = build3LegParlay(legs, skipTop);
-        if (parlay) { candidates.push({ sport, parlay }); builtCount++; }
-      }
-      if (builtCount === 0) skipped.push({ sport, reason: `${legs.length} legs but no valid 3-leg parlay` });
-    } catch (e) {
-      errors.push({ sport, error: String(e) });
-    }
-  }
-
-  // Sort by confidence, take top 8 overall — gives users a meaningful set of
-  // picks to follow each day across all in-season sports
-  candidates.sort((a, b) => b.parlay.confidence - a.parlay.confidence);
-  const topPicks = candidates.slice(0, 8);
-
-  // On force re-lock, today may already have picks 1-N for some sports.
-  // Look up the existing max rank per sport so we append (e.g. rank 4, 5, 6)
-  // instead of colliding on the unique constraint.
-  const existingMaxRankBySport = {};
-  if (force) {
-    const existingRes = await new Promise((resolve) => {
-      const u = new URL(`${SUPA_URL}/rest/v1/house_picks?pick_date=eq.${today}&select=sport,rank`);
-      https.get({
-        hostname: u.hostname, path: u.pathname + u.search,
-        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
-      }, (res) => {
-        const chunks = [];
-        res.on('data', c => chunks.push(c));
-        res.on('end', () => {
-          try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-          catch { resolve([]); }
-        });
-      }).on('error', () => resolve([]));
-    });
-    if (Array.isArray(existingRes)) {
-      for (const r of existingRes) {
-        const s = r.sport;
-        if (!existingMaxRankBySport[s] || r.rank > existingMaxRankBySport[s]) {
-          existingMaxRankBySport[s] = r.rank;
+      const r = await fetchJSON('https://api.the-odds-api.com/v4/sports/' + oddsKey + '/odds?apiKey=' + ODDS_KEY + '&regions=us&markets=h2h,spreads&oddsFormat=american');
+      if (r.status !== 200) { skipped.push({ sport, reason: 'odds api ' + r.status }); continue; }
+      const games = Array.isArray(r.data) ? r.data : [];
+      if (!games.length) { skipped.push({ sport, reason: 'no games today' }); continue; }
+      for (const game of games) {
+        const dkBook = (game.bookmakers || []).find(b => b.key === 'draftkings') || (game.bookmakers || []).find(b => b.key === 'fanduel') || (game.bookmakers || [])[0];
+        if (!dkBook) continue;
+        const h2h = dkBook.markets && dkBook.markets.find(m => m.key === 'h2h');
+        const spreadM = dkBook.markets && dkBook.markets.find(m => m.key === 'spreads');
+        if (!h2h) continue;
+        const homeOutcome = h2h.outcomes && h2h.outcomes.find(o => o.name === game.home_team);
+        const awayOutcome = h2h.outcomes && h2h.outcomes.find(o => o.name === game.away_team);
+        const homeML = homeOutcome && homeOutcome.price;
+        const awayML = awayOutcome && awayOutcome.price;
+        if (homeML == null || awayML == null) continue;
+        if (Math.abs(homeML) > 2500 || Math.abs(awayML) > 2500) continue;
+        const pPub = publicEstimate(homeML, awayML);
+        const hist = await getHistory(game.id);
+        const poly = await getPolyEdge(sport, game.away_team, game.home_team);
+        const ai = aiProj(homeML, awayML, game.bookmakers || []);
+        const homeSig = [], awaySig = [];
+        if (poly && poly.homeProb != null) { const dk = impliedPct(homeML); if (poly.homeProb - dk >= POLY_PCT) homeSig.push({ type: 'polymarket', detail: 'Polymarket ' + poly.homeProb.toFixed(1) + '% vs DK ' + dk.toFixed(1) + '%' }); }
+        if (pPub.away >= PUBLIC_PCT) homeSig.push({ type: 'public_fade', detail: pPub.away + '% public on ' + game.away_team });
+        if (detectRLM(hist, 'away')) homeSig.push({ type: 'rlm', detail: 'Line moved 5+ cents toward ' + game.home_team });
+        if (detectSteam(hist, 'home')) homeSig.push({ type: 'steam', detail: 'Steam toward ' + game.home_team });
+        if (ai.home) homeSig.push({ type: 'ai_proj', detail: 'Market consensus stronger on ' + game.home_team });
+        if (poly && poly.awayProb != null) { const dk = impliedPct(awayML); if (poly.awayProb - dk >= POLY_PCT) awaySig.push({ type: 'polymarket', detail: 'Polymarket ' + poly.awayProb.toFixed(1) + '% vs DK ' + dk.toFixed(1) + '%' }); }
+        if (pPub.home >= PUBLIC_PCT) awaySig.push({ type: 'public_fade', detail: pPub.home + '% public on ' + game.home_team });
+        if (detectRLM(hist, 'home')) awaySig.push({ type: 'rlm', detail: 'Line moved 5+ cents toward ' + game.away_team });
+        if (detectSteam(hist, 'away')) awaySig.push({ type: 'steam', detail: 'Steam toward ' + game.away_team });
+        if (ai.away) awaySig.push({ type: 'ai_proj', detail: 'Market consensus stronger on ' + game.away_team });
+        const cands = [];
+        if (homeSig.length >= MIN_SIG) cands.push({ sport, game, betType: 'ML', side: 'home', pickLabel: game.home_team + ' ML', line: null, odds: homeML, signals: homeSig });
+        if (awaySig.length >= MIN_SIG) cands.push({ sport, game, betType: 'ML', side: 'away', pickLabel: game.away_team + ' ML', line: null, odds: awayML, signals: awaySig });
+        if (spreadM) {
+          const hS = spreadM.outcomes && spreadM.outcomes.find(o => o.name === game.home_team);
+          const aS = spreadM.outcomes && spreadM.outcomes.find(o => o.name === game.away_team);
+          if (hS && homeSig.length >= MIN_SIG) cands.push({ sport, game, betType: 'SPREAD', side: 'home', pickLabel: game.home_team + ' ' + (hS.point > 0 ? '+' : '') + hS.point, line: hS.point, odds: hS.price, signals: homeSig });
+          if (aS && awaySig.length >= MIN_SIG) cands.push({ sport, game, betType: 'SPREAD', side: 'away', pickLabel: game.away_team + ' ' + (aS.point > 0 ? '+' : '') + aS.point, line: aS.point, odds: aS.price, signals: awaySig });
         }
+        cands.sort((a, b) => { if (b.signals.length !== a.signals.length) return b.signals.length - a.signals.length; return a.betType === 'ML' ? -1 : 1; });
+        if (cands[0]) candidates.push(cands[0]);
       }
-    }
+    } catch (e) { errors.push({ sport, error: String(e) }); }
   }
-
-  // Track per-sport rank counters so we can assign sport-scoped ranks
-  // (rank 1 in mlb is independent of rank 1 in nba — the unique constraint
-  // is on (date, rank, sport) so duplicates across sports are fine)
+  candidates.sort((a, b) => b.signals.length - a.signals.length);
   const nextRankBySport = {};
-  for (const s in existingMaxRankBySport) {
-    nextRankBySport[s] = existingMaxRankBySport[s] + 1;
+  if (force) {
+    const r = await fetchJSON(SUPA_URL + '/rest/v1/house_picks?pick_date=eq.' + today + '&select=sport,rank', { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }).catch(() => ({ data: [] }));
+    if (Array.isArray(r.data)) for (const row of r.data) nextRankBySport[row.sport] = Math.max(nextRankBySport[row.sport] || 0, row.rank);
+    for (const s in nextRankBySport) nextRankBySport[s] += 1;
   }
-
-  for (let i = 0; i < topPicks.length; i++) {
-    const { sport, parlay } = topPicks[i];
-    const rank = nextRankBySport[sport] || 1;
-    nextRankBySport[sport] = rank + 1;
-
+  for (const c of candidates) {
+    const rank = nextRankBySport[c.sport] || 1;
+    nextRankBySport[c.sport] = rank + 1;
+    const tier = c.signals.length >= 3 ? 'S' : 'A';
+    const confidence = Math.min(95, c.signals.length * 18 + 50);
     const row = {
-      pick_date: today,
-      rank,
-      sport,
-      legs: parlay.legs,
-      combined_odds: parlay.combinedOdds,
-      confidence: parlay.confidence,
-      tier: parlay.tier,
-      status: 'pending',
+      pick_date: today, rank, sport: c.sport,
+      legs: [{ gameId: c.game.id, matchup: c.game.away_team + ' @ ' + c.game.home_team, betType: c.betType, side: c.side, line: c.line, label: c.pickLabel, odds: c.odds, signals: c.signals }],
+      combined_odds: c.odds, confidence, tier, status: 'pending',
+      bet_type: c.betType, pick_side: c.side, pick_label: c.pickLabel,
+      event_id: c.game.id, line: c.line, signal_count: c.signals.length, signals: c.signals,
     };
-    const res = await postJSON(
-      `${SUPA_URL}/rest/v1/house_picks`,
-      row,
-      { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, Prefer: 'return=minimal' }
-    );
-    if (res.status >= 200 && res.status < 300) {
-      inserted.push({ sport, rank, tier: parlay.tier, conf: parlay.confidence });
-    } else {
-      errors.push({ sport, supabaseStatus: res.status, body: res.body.slice(0, 200) });
-    }
+    const res = await postJSON(SUPA_URL + '/rest/v1/house_picks', row, { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY, Prefer: 'return=minimal' });
+    if (res.status >= 200 && res.status < 300) inserted.push({ sport: c.sport, rank, tier, signals: c.signals.length, label: c.pickLabel });
+    else errors.push({ sport: c.sport, supabaseStatus: res.status, body: res.body.slice(0, 200) });
   }
-
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ date: today, inserted, skipped, errors, ts: new Date().toISOString() }),
-  };
+  return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: today, inserted, skipped, errors, ts: new Date().toISOString() }) };
 };

@@ -202,7 +202,14 @@ async function findEspnGameId(sport, awayTeam, homeTeam, gameDate) {
     const awayName = away.team?.displayName || away.team?.name || '';
 
     if (teamMatches(homeTeam, homeName, sport) && teamMatches(awayTeam, awayName, sport)) {
-      return { id: ev.id, completed: ev.status?.type?.completed === true };
+      const homeScore = parseInt(home.score, 10);
+      const awayScore = parseInt(away.score, 10);
+      return {
+        id: ev.id,
+        completed: ev.status?.type?.completed === true,
+        homeScore: isNaN(homeScore) ? null : homeScore,
+        awayScore: isNaN(awayScore) ? null : awayScore,
+      };
     }
   }
   return null;
@@ -294,6 +301,48 @@ function gradeLeg(line, pick, actual) {
   return null;
 }
 
+// Grade a game-line leg (ML / SPREAD / TOTAL) from final scores
+// betType: 'ML' | 'SPREAD' | 'TOTAL'
+// side: 'home' | 'away' | 'over' | 'under'
+// line: spread (e.g. -1.5 for home -1.5) or total (e.g. 8.5)
+function gradeGameLine(betType, side, line, homeScore, awayScore) {
+  if (homeScore == null || awayScore == null) return null;
+  if (betType === 'ML') {
+    if (homeScore === awayScore) return 'push'; // rare but possible (e.g. cancelled / abandoned)
+    if (side === 'home') return homeScore > awayScore ? 'won' : 'lost';
+    if (side === 'away') return awayScore > homeScore ? 'won' : 'lost';
+    return null;
+  }
+  if (betType === 'SPREAD') {
+    const lineNum = Number(line);
+    if (isNaN(lineNum)) return null;
+    // For spread: side is the team taking that line. e.g. side='home' line=-1.5 means home team -1.5
+    // Home covers if (homeScore + line) > awayScore (line is negative for favorite)
+    // Away spread is mirrored: line is opposite sign
+    if (side === 'home') {
+      const adjusted = homeScore + lineNum;
+      if (adjusted === awayScore) return 'push';
+      return adjusted > awayScore ? 'won' : 'lost';
+    }
+    if (side === 'away') {
+      const adjusted = awayScore + lineNum;
+      if (adjusted === homeScore) return 'push';
+      return adjusted > homeScore ? 'won' : 'lost';
+    }
+    return null;
+  }
+  if (betType === 'TOTAL') {
+    const lineNum = Number(line);
+    if (isNaN(lineNum)) return null;
+    const total = homeScore + awayScore;
+    if (total === lineNum) return 'push';
+    if (side === 'over')  return total > lineNum ? 'won' : 'lost';
+    if (side === 'under') return total < lineNum ? 'won' : 'lost';
+    return null;
+  }
+  return null;
+}
+
 exports.handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
   if (!SUPA_URL || !SUPA_KEY) {
@@ -359,6 +408,17 @@ exports.handler = async (event) => {
         break;
       }
 
+      // GAME-LINE LEG (ML / SPREAD / TOTAL) — v2 picks
+      // Determined by presence of betType + side fields. Player-prop legs
+      // have player + propType instead.
+      if (leg.betType && leg.side && (leg.betType === 'ML' || leg.betType === 'SPREAD' || leg.betType === 'TOTAL')) {
+        const grade = gradeGameLine(leg.betType, leg.side, leg.line, espnGame.homeScore, espnGame.awayScore);
+        if (!grade) { allDataAvailable = false; break; }
+        legResults.push(grade);
+        continue;
+      }
+
+      // PLAYER-PROP LEG (legacy parlay-era picks) — use box score
       // Fetch/cache box score
       let box = boxScoreCache[espnGame.id];
       if (!box) {

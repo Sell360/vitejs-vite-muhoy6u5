@@ -189,6 +189,10 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
     onSettle(pick.id, 'won');
   };
 
+  const isV2 = pick.signal_count != null && pick.signal_count > 0;
+  const v2Leg = isV2 ? pick.legs[0] : null;
+  const v2Signals = (v2Leg && v2Leg.signals) || pick.signals || [];
+
   return (
     <div style={{
       background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.07)',
@@ -213,8 +217,16 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
         <span style={{ fontSize: 11, color: '#1e3a60', fontWeight: 700 }}>
           {SPORT_LABELS[pick.sport]} · {dateLabel} · #{pick.rank}
         </span>
-        <span style={{ flex: 1, fontSize: 12, color: '#8ab0cc', fontWeight: 600 }}>
-          {pick.legs.length}-Leg Parlay
+        <span style={{ flex: 1, fontSize: 12, color: '#c8ddf0', fontWeight: 700 }}>
+          {isV2 ? (pick.pick_label || (v2Leg && v2Leg.label) || 'Pick') : `${pick.legs.length}-Leg Parlay`}
+          {isV2 && pick.signal_count && (
+            <span style={{
+              marginLeft: 8, padding: '1px 6px',
+              background: 'rgba(56,189,248,.15)', color: '#38bdf8',
+              border: '1px solid rgba(56,189,248,.3)', borderRadius: 4,
+              fontSize: 10, fontWeight: 800, letterSpacing: .5,
+            }}>{pick.signal_count} SIGNALS</span>
+          )}
         </span>
         <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 900, color: '#c8ddf0' }}>
           {fmt(pick.combined_odds)}
@@ -227,35 +239,86 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
         }}>{pick.status === 'pending_review' ? 'REVIEW' : pick.status.toUpperCase()}</span>
       </button>
 
-      {/* Legs */}
+      {/* Body */}
       {open && (
         <div style={{ padding: '0 14px 12px', borderTop: '1px solid rgba(255,255,255,.04)' }}>
-          {pick.legs.map((l, i) => (
-            <div key={i} style={{
-              padding: '8px 0',
-              borderBottom: i < pick.legs.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <span style={{ fontSize: 10, color: '#1e3a60', fontWeight: 700, minWidth: 18 }}>#{i + 1}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800, color: '#c8ddf0' }}>
-                  {l.player}
+          {isV2 ? (
+            <>
+              {/* V2 single-leg pick: show matchup + bet detail + signals */}
+              <div style={{ padding: '10px 0' }}>
+                <div style={{ fontSize: 11, color: '#1a3060', fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>
+                  Matchup
                 </div>
-                <div style={{ fontSize: 11, color: '#8ab0cc' }}>
-                  <span style={{ color: l.pick === 'over' ? '#4ade80' : '#f87171', fontWeight: 700, textTransform: 'uppercase' }}>{l.pick}</span>
-                  {' '}{l.line} {l.propType}
-                  <span style={{ color: '#1a3060' }}> · {l.matchup}</span>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 16, fontWeight: 800, color: '#c8ddf0' }}>
+                  {(v2Leg && v2Leg.matchup) || '—'}
                 </div>
               </div>
-              <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: l.odds > 0 ? '#4ade80' : '#c8ddf0' }}>{fmt(l.odds)}</span>
-            </div>
-          ))}
+              {v2Signals.length > 0 && (
+                <div style={{
+                  padding: '10px 12px', marginTop: 6,
+                  background: 'rgba(56,189,248,.04)',
+                  border: '1px solid rgba(56,189,248,.15)',
+                  borderRadius: 8,
+                }}>
+                  <div style={{ fontSize: 10, color: '#38bdf8', fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Why This Pick — {v2Signals.length} Edge Signals
+                  </div>
+                  {v2Signals.map((s, i) => (
+                    <div key={i} style={{
+                      display: 'flex', gap: 8, alignItems: 'center',
+                      padding: '4px 0', fontSize: 11, color: '#c8ddf0',
+                    }}>
+                      <span style={{
+                        padding: '1px 6px', borderRadius: 4,
+                        background: 'rgba(56,189,248,.15)',
+                        color: '#38bdf8', fontWeight: 800,
+                        fontSize: 9, letterSpacing: .5, textTransform: 'uppercase',
+                        minWidth: 70, textAlign: 'center',
+                      }}>
+                        {s.type === 'polymarket' ? 'POLYMARKET'
+                          : s.type === 'rlm' ? 'RLM'
+                          : s.type === 'steam' ? 'STEAM'
+                          : s.type === 'public_fade' ? 'FADE PUBLIC'
+                          : s.type === 'ai_proj' ? 'AI PROJ'
+                          : (s.type || '').toUpperCase()}
+                      </span>
+                      <span style={{ flex: 1, color: '#8ab0cc' }}>{s.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Legacy parlay: show each leg */}
+              {pick.legs.map((l, i) => (
+                <div key={i} style={{
+                  padding: '8px 0',
+                  borderBottom: i < pick.legs.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <span style={{ fontSize: 10, color: '#1e3a60', fontWeight: 700, minWidth: 18 }}>#{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 800, color: '#c8ddf0' }}>
+                      {l.player || l.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#8ab0cc' }}>
+                      {l.pick && <span style={{ color: l.pick === 'over' ? '#4ade80' : '#f87171', fontWeight: 700, textTransform: 'uppercase' }}>{l.pick}</span>}
+                      {' '}{l.line} {l.propType}
+                      <span style={{ color: '#1a3060' }}> · {l.matchup}</span>
+                    </div>
+                  </div>
+                  <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: l.odds > 0 ? '#4ade80' : '#c8ddf0' }}>{fmt(l.odds)}</span>
+                </div>
+              ))}
+            </>
+          )}
 
           {/* Admin settlement controls */}
           {isAdmin && (pick.status === 'pending' || pick.status === 'pending_review') && !gradeOpen && (
             <div style={{ display: 'flex', gap: 6, marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,.05)', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 9, color: '#1a3060', fontWeight: 800, letterSpacing: 1, alignSelf: 'center' }}>ADMIN:</span>
-              <button onClick={() => setGradeOpen(true)} style={settleBtn('#a855f7')}>📝 Grade Manually</button>
+              {!isV2 && <button onClick={() => setGradeOpen(true)} style={settleBtn('#a855f7')}>📝 Grade Manually</button>}
               <button onClick={() => onSettle(pick.id, 'won')} style={settleBtn('#4ade80')}>✓ Won</button>
               <button onClick={() => onSettle(pick.id, 'lost')} style={settleBtn('#f87171')}>✗ Lost</button>
               <button onClick={() => onSettle(pick.id, 'push')} style={settleBtn('#fbbf24')}>= Push</button>
@@ -281,7 +344,7 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
                 }}>
                   <span style={{ fontSize: 10, color: '#1e3a60', fontWeight: 700, minWidth: 18 }}>#{i + 1}</span>
                   <span style={{ flex: 1, fontSize: 11, color: '#c8ddf0', fontWeight: 600, minWidth: 0 }}>
-                    {l.player} {l.pick.toUpperCase()} {l.line} {l.propType}
+                    {l.player} {(l.pick || '').toUpperCase()} {l.line} {l.propType}
                   </span>
                   <input
                     type="number" step="0.5"

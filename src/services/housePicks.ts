@@ -4,11 +4,23 @@
 
 import { supabase, isSupabaseConfigured } from './supabase';
 
+export interface PickSignal {
+  type: 'polymarket' | 'rlm' | 'steam' | 'public_fade' | 'ai_proj' | string;
+  detail: string;
+}
+
 export interface HousePickLeg {
-  player: string;
-  propType: string;
-  line: number;
-  pick: 'over' | 'under';
+  // Player-prop fields (legacy)
+  player?: string;
+  propType?: string;
+  pick?: 'over' | 'under';
+  // Game-line fields (v2)
+  betType?: 'ML' | 'SPREAD' | 'TOTAL';
+  side?: 'home' | 'away' | 'over' | 'under';
+  label?: string;
+  signals?: PickSignal[];
+  // Common
+  line?: number | null;
   odds: number;
   gameId: string;
   matchup: string;
@@ -29,6 +41,14 @@ export interface HousePick {
   legs_pushed: number | null;
   settled_at: string | null;
   created_at: string;
+  // V2 columns (optional for back-compat)
+  signal_count?: number;
+  signals?: PickSignal[];
+  bet_type?: 'ML' | 'SPREAD' | 'TOTAL';
+  pick_side?: 'home' | 'away' | 'over' | 'under';
+  pick_label?: string;
+  event_id?: string;
+  line?: number | null;
 }
 
 export interface TrackRecord {
@@ -196,11 +216,14 @@ export async function manualGradeLegs(
   for (let i = 0; i < pick.legs.length; i++) {
     const leg = pick.legs[i];
     const actual = actualStats[i];
-    if (actual === leg.line) pushCount++;
-    else if (leg.pick === 'over' && actual > leg.line) wonCount++;
-    else if (leg.pick === 'over' && actual < leg.line) lostCount++;
-    else if (leg.pick === 'under' && actual < leg.line) wonCount++;
-    else if (leg.pick === 'under' && actual > leg.line) lostCount++;
+    const line = leg.line;
+    const pickDir = leg.pick;
+    if (line == null || !pickDir) continue;
+    if (actual === line) pushCount++;
+    else if (pickDir === 'over' && actual > line) wonCount++;
+    else if (pickDir === 'over' && actual < line) lostCount++;
+    else if (pickDir === 'under' && actual < line) wonCount++;
+    else if (pickDir === 'under' && actual > line) lostCount++;
   }
   let finalStatus: 'won' | 'lost' | 'push';
   if (lostCount > 0) finalStatus = 'lost';
