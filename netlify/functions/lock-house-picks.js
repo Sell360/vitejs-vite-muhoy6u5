@@ -15,6 +15,20 @@ const PICK_SPORTS = [
   { sport: 'wnba', oddsKey: 'basketball_wnba' },
 ];
 const POLY_PCT = 3, RLM_TICKS = 5, PUBLIC_PCT = 75, AI_PCT = 5, MIN_SIG = 2;
+// Track record optics: don't lock extreme dogs that look reckless even when
+// signals fire. +450 max — past that the bet is too speculative for a public
+// pick list, regardless of edge.
+const MAX_ODDS = 450;
+// Daily cap on total picks across all sports (avoid spamming the page)
+const MAX_PICKS_PER_DAY = 10;
+// Odds bucket distribution — picker tries to fill each bucket so the slate
+// isn't 100% dogs. Buckets are checked in priority order until full.
+const ODDS_BUCKETS = [
+  { name: 'favorite',  min: -300, max: -130, target: 2 },
+  { name: 'pickem',    min: -130, max:  130, target: 2 },
+  { name: 'mild_dog',  min:  130, max:  250, target: 3 },
+  { name: 'long_dog',  min:  250, max:  450, target: 3 },
+];
 
 function fetchJSON(url, headers) {
   return new Promise((resolve, reject) => {
@@ -71,7 +85,7 @@ function detectSteam(snaps, side) {
   return false;
 }
 function aiProj(homeML_dk, awayML_dk, allBooks) {
-  if (!allBooks || allBooks.length < 3) return { home: false, away: false };
+  if (!allBooks || allBooks.length < 3) return { home: false, away: false, homeChalk: false, awayChalk: false };
   let hs = 0, as = 0, n = 0;
   for (const b of allBooks) {
     const h2h = b.markets && b.markets.find(m => m.key === 'h2h');
@@ -81,10 +95,20 @@ function aiProj(homeML_dk, awayML_dk, allBooks) {
     if (!h || !a) continue;
     hs += impliedPct(h); as += impliedPct(a); n++;
   }
-  if (n < 3) return { home: false, away: false };
+  if (n < 3) return { home: false, away: false, homeChalk: false, awayChalk: false };
   const ha = hs / n, aa = as / n;
   const dh = impliedPct(homeML_dk), da = impliedPct(awayML_dk);
-  return { home: (ha - dh) >= AI_PCT, away: (aa - da) >= AI_PCT };
+  // Standard signal: consensus prices the side better than DK (positive EV)
+  // Fires more on dogs since favorites are typically shaded too tight.
+  const homeValue = (ha - dh) >= AI_PCT;
+  const awayValue = (aa - da) >= AI_PCT;
+  // Chalk signal: heavy favorite (-130 or worse) where market consensus
+  // confirms the price within 2%. This means the favorite is correctly priced
+  // by both DK and the market — a strong-fundamentals signal. Lets us lock
+  // legitimate favorites without distorting the dog-finding signals.
+  const homeChalk = homeML_dk <= -130 && Math.abs(ha - dh) <= 2;
+  const awayChalk = awayML_dk <= -130 && Math.abs(aa - da) <= 2;
+  return { home: homeValue, away: awayValue, homeChalk, awayChalk };
 }
 async function getPolyEdge(sport, awayTeam, homeTeam) {
   try {
@@ -147,19 +171,23 @@ exports.handler = async (event) => {
         if (detectRLM(hist, 'away')) homeSig.push({ type: 'rlm', detail: 'Line moved 5+ cents toward ' + game.home_team });
         if (detectSteam(hist, 'home')) homeSig.push({ type: 'steam', detail: 'Steam toward ' + game.home_team });
         if (ai.home) homeSig.push({ type: 'ai_proj', detail: 'Market consensus stronger on ' + game.home_team });
+        if (ai.homeChalk) homeSig.push({ type: 'consensus_chalk', detail: game.home_team + ' is a fairly-priced favorite — DK and market agree' });
         if (poly && poly.awayProb != null) { const dk = impliedPct(awayML); if (poly.awayProb - dk >= POLY_PCT) awaySig.push({ type: 'polymarket', detail: 'Polymarket ' + poly.awayProb.toFixed(1) + '% vs DK ' + dk.toFixed(1) + '%' }); }
         if (pPub.home >= PUBLIC_PCT) awaySig.push({ type: 'public_fade', detail: pPub.home + '% public on ' + game.home_team });
         if (detectRLM(hist, 'home')) awaySig.push({ type: 'rlm', detail: 'Line moved 5+ cents toward ' + game.away_team });
         if (detectSteam(hist, 'away')) awaySig.push({ type: 'steam', detail: 'Steam toward ' + game.away_team });
         if (ai.away) awaySig.push({ type: 'ai_proj', detail: 'Market consensus stronger on ' + game.away_team });
+        if (ai.awayChalk) awaySig.push({ type: 'consensus_chalk', detail: game.away_team + ' is a fairly-priced favorite — DK and market agree' });
         const cands = [];
-        if (homeSig.length >= MIN_SIG) cands.push({ sport, game, betType: 'ML', side: 'home', pickLabel: game.home_team + ' ML', line: null, odds: homeML, signals: homeSig });
-        if (awaySig.length >= MIN_SIG) cands.push({ sport, game, betType: 'ML', side: 'away', pickLabel: game.away_team + ' ML', line: null, odds: awayML, signals: awaySig });
+        // Reject candidates with odds worse than MAX_ODDS to keep slate readable.
+        // Long-shot picks with edge get filtered for track-record optics.
+        if (homeSig.length >= MIN_SIG && homeML <= MAX_ODDS) cands.push({ sport, game, betType: 'ML', side: 'home', pickLabel: game.home_team + ' ML', line: null, odds: homeML, signals: homeSig });
+        if (awaySig.length >= MIN_SIG && awayML <= MAX_ODDS) cands.push({ sport, game, betType: 'ML', side: 'away', pickLabel: game.away_team + ' ML', line: null, odds: awayML, signals: awaySig });
         if (spreadM) {
           const hS = spreadM.outcomes && spreadM.outcomes.find(o => o.name === game.home_team);
           const aS = spreadM.outcomes && spreadM.outcomes.find(o => o.name === game.away_team);
-          if (hS && homeSig.length >= MIN_SIG) cands.push({ sport, game, betType: 'SPREAD', side: 'home', pickLabel: game.home_team + ' ' + (hS.point > 0 ? '+' : '') + hS.point, line: hS.point, odds: hS.price, signals: homeSig });
-          if (aS && awaySig.length >= MIN_SIG) cands.push({ sport, game, betType: 'SPREAD', side: 'away', pickLabel: game.away_team + ' ' + (aS.point > 0 ? '+' : '') + aS.point, line: aS.point, odds: aS.price, signals: awaySig });
+          if (hS && homeSig.length >= MIN_SIG && hS.price <= MAX_ODDS) cands.push({ sport, game, betType: 'SPREAD', side: 'home', pickLabel: game.home_team + ' ' + (hS.point > 0 ? '+' : '') + hS.point, line: hS.point, odds: hS.price, signals: homeSig });
+          if (aS && awaySig.length >= MIN_SIG && aS.price <= MAX_ODDS) cands.push({ sport, game, betType: 'SPREAD', side: 'away', pickLabel: game.away_team + ' ' + (aS.point > 0 ? '+' : '') + aS.point, line: aS.point, odds: aS.price, signals: awaySig });
         }
         cands.sort((a, b) => { if (b.signals.length !== a.signals.length) return b.signals.length - a.signals.length; return a.betType === 'ML' ? -1 : 1; });
         if (cands[0]) candidates.push(cands[0]);
@@ -167,13 +195,40 @@ exports.handler = async (event) => {
     } catch (e) { errors.push({ sport, error: String(e) }); }
   }
   candidates.sort((a, b) => b.signals.length - a.signals.length);
+  // Distribute picks across odds buckets so the slate isn't 100% dogs.
+  // For each bucket (favorites → pickem → mild dogs → long dogs), pull the
+  // strongest available candidates until either the bucket target is met or
+  // we've hit the daily max.
+  const selected = [];
+  const used = new Set();
+  for (const bucket of ODDS_BUCKETS) {
+    const fitting = candidates.filter((c, i) => {
+      if (used.has(i)) return false;
+      const o = c.odds;
+      return o >= bucket.min && o < bucket.max;
+    });
+    for (let i = 0; i < bucket.target && i < fitting.length && selected.length < MAX_PICKS_PER_DAY; i++) {
+      const candIdx = candidates.indexOf(fitting[i]);
+      selected.push(fitting[i]);
+      used.add(candIdx);
+    }
+    if (selected.length >= MAX_PICKS_PER_DAY) break;
+  }
+  // If buckets didn't fill, top up with strongest remaining (regardless of bucket)
+  if (selected.length < MAX_PICKS_PER_DAY) {
+    for (let i = 0; i < candidates.length && selected.length < MAX_PICKS_PER_DAY; i++) {
+      if (!used.has(i)) { selected.push(candidates[i]); used.add(i); }
+    }
+  }
+  // Re-sort final selection by signal count (strongest first)
+  selected.sort((a, b) => b.signals.length - a.signals.length);
   const nextRankBySport = {};
   if (force) {
     const r = await fetchJSON(SUPA_URL + '/rest/v1/house_picks?pick_date=eq.' + today + '&select=sport,rank', { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY }).catch(() => ({ data: [] }));
     if (Array.isArray(r.data)) for (const row of r.data) nextRankBySport[row.sport] = Math.max(nextRankBySport[row.sport] || 0, row.rank);
     for (const s in nextRankBySport) nextRankBySport[s] += 1;
   }
-  for (const c of candidates) {
+  for (const c of selected) {
     const rank = nextRankBySport[c.sport] || 1;
     nextRankBySport[c.sport] = rank + 1;
     const tier = c.signals.length >= 3 ? 'S' : 'A';

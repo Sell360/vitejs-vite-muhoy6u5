@@ -280,6 +280,7 @@ function PickCard({ pick, isAdmin, onSettle }: { pick: HousePick; isAdmin: boole
                           : s.type === 'steam' ? 'STEAM'
                           : s.type === 'public_fade' ? 'FADE PUBLIC'
                           : s.type === 'ai_proj' ? 'AI PROJ'
+                          : s.type === 'consensus_chalk' ? 'CHALK ✓'
                           : (s.type || '').toUpperCase()}
                       </span>
                       <span style={{ flex: 1, color: '#8ab0cc' }}>{s.detail}</span>
