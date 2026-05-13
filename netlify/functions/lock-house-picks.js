@@ -195,6 +195,18 @@ exports.handler = async (event) => {
     } catch (e) { errors.push({ sport, error: String(e) }); }
   }
   candidates.sort((a, b) => b.signals.length - a.signals.length);
+  // Dedupe by team+sport: if the same team appears in multiple candidate picks
+  // (doubleheader, both ML and spread qualifying, etc), keep only the strongest
+  // signal version. Prevents 'Rockies' showing twice on the daily slate.
+  const seenTeam = new Set();
+  const deduped = [];
+  for (const c of candidates) {
+    const teamName = c.side === 'home' ? c.game.home_team : c.game.away_team;
+    const key = c.sport + '::' + teamName;
+    if (seenTeam.has(key)) continue;
+    seenTeam.add(key);
+    deduped.push(c);
+  }
   // Distribute picks across odds buckets so the slate isn't 100% dogs.
   // For each bucket (favorites → pickem → mild dogs → long dogs), pull the
   // strongest available candidates until either the bucket target is met or
@@ -202,13 +214,13 @@ exports.handler = async (event) => {
   const selected = [];
   const used = new Set();
   for (const bucket of ODDS_BUCKETS) {
-    const fitting = candidates.filter((c, i) => {
+    const fitting = deduped.filter((c, i) => {
       if (used.has(i)) return false;
       const o = c.odds;
       return o >= bucket.min && o < bucket.max;
     });
     for (let i = 0; i < bucket.target && i < fitting.length && selected.length < MAX_PICKS_PER_DAY; i++) {
-      const candIdx = candidates.indexOf(fitting[i]);
+      const candIdx = deduped.indexOf(fitting[i]);
       selected.push(fitting[i]);
       used.add(candIdx);
     }
@@ -216,8 +228,8 @@ exports.handler = async (event) => {
   }
   // If buckets didn't fill, top up with strongest remaining (regardless of bucket)
   if (selected.length < MAX_PICKS_PER_DAY) {
-    for (let i = 0; i < candidates.length && selected.length < MAX_PICKS_PER_DAY; i++) {
-      if (!used.has(i)) { selected.push(candidates[i]); used.add(i); }
+    for (let i = 0; i < deduped.length && selected.length < MAX_PICKS_PER_DAY; i++) {
+      if (!used.has(i)) { selected.push(deduped[i]); used.add(i); }
     }
   }
   // Re-sort final selection by signal count (strongest first)
